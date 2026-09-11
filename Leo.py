@@ -220,8 +220,9 @@ def dialog_login():
 
     st.markdown('<div class="modal-title-custom">Accedi all\'Area Riservata</div>', unsafe_allow_html=True)
     
-    email = st.text_input("Email", value="gison.salvatore@gmail.com", placeholder="Email", label_visibility="collapsed", key="in_email")
-    password = st.text_input("Password", value="121212", type="password", placeholder="Password", label_visibility="collapsed", key="in_pw")
+    # RIMOZIONE CREDENZIALI DI DEFAULT
+    email = st.text_input("Email", value="", placeholder="Email", label_visibility="collapsed", key="in_email")
+    password = st.text_input("Password", value="", type="password", placeholder="Password", label_visibility="collapsed", key="in_pw")
     ricordami = st.checkbox("Ricordami", value=True, key="in_remember")
 
     if st.button("Accedi", key="btn_login_act"):
