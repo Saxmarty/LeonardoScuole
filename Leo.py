@@ -1157,6 +1157,17 @@ else:
         df_catalogo = carica_catalogo_corsi()
         pacchetto_utente = dati.get('pacchetto', 'Liceo Scientifico')
 
+        # L'amministratore puo' vedere qualsiasi corso come lo vede uno studente
+        if is_admin:
+            indirizzi = {str(pacchetto_utente).strip()}
+            if not df_catalogo.empty and 'Indirizzo_Studio' in df_catalogo.columns:
+                indirizzi |= {str(x).strip() for x in df_catalogo['Indirizzo_Studio'].dropna().unique() if str(x).strip()}
+            indirizzi = sorted(indirizzi)
+            pacchetto_utente = st.selectbox(
+                "👁️ Anteprima come studente del corso:", indirizzi,
+                index=indirizzi.index(str(pacchetto_utente).strip()), key="admin_anteprima_corso"
+            )
+
         if corso_rumeno is not None and str(pacchetto_utente).strip().lower() == corso_rumeno.INDIRIZZO_RUMENO.lower():
             render_corso_rumeno()
 
