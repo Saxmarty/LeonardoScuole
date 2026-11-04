@@ -615,3 +615,79 @@ def righe_catalogo():
         }
         for m in sorted(MODULI_RUMENO, key=lambda x: x["ordine"])
     ]
+
+
+# ----------------------------------------------------------------------
+# ILLUSTRAZIONI (emoji) PER LA SCHEDA "IMPARA"
+# ----------------------------------------------------------------------
+ICONE_MODULI = {1: "🔤", 2: "👋", 3: "🔢", 4: "👨‍👩‍👧", 5: "🍽️", 6: "🚏", 7: "⚙️", 8: "📐"}
+
+EMOJI = {
+    # Modulo 1
+    "mamă": "👩‍👦", "băiat": "👦", "câine": "🐕", "înghețată": "🍦", "șase": "6️⃣", "țară": "🗺️",
+    "cireașă": "🍒", "chitară": "🎸", "ger": "🥶", "ghid": "🧭", "hartă": "🗺️", "jucărie": "🧸",
+    "Cum se scrie?": "✍️", "Cum se pronunță?": "🗣️", "Mai rar, vă rog.": "🐢",
+    # Modulo 2
+    "Bună ziua": "🌞", "Bună dimineața": "🌅", "Bună seara": "🌆", "Noapte bună": "🌙",
+    "Salut / Bună": "👋", "La revedere": "🙋", "Pa": "👋", "Mulțumesc": "🙏", "Cu plăcere": "😊",
+    "Te rog / Vă rog": "🙏", "Scuzați-mă": "🙇", "Da / Nu": "👍👎",
+    "Cum te cheamă?": "❓", "Mă numesc Ana.": "🙋‍♀️", "Cum vă numiți?": "🤝", "Ce mai faci?": "🙂",
+    "Bine, mulțumesc. Și tu?": "😊", "De unde ești?": "🌍", "Sunt din Italia.": "🇮🇹",
+    "Sunt italian / italiancă.": "🇮🇹", "Îmi pare bine!": "🤝", "Nu înțeleg.": "🤷", "Vorbiți italiană?": "💬",
+    # Modulo 3
+    "unu / una": "1️⃣", "doi / două": "2️⃣", "trei, patru, cinci": "3️⃣", "șase, șapte, opt": "6️⃣",
+    "nouă, zece": "🔟", "douăzeci": "2️⃣0️⃣", "o sută / o mie": "💯", "luni, marți, miercuri": "📅",
+    "joi, vineri": "📅", "sâmbătă, duminică": "🎉", "azi / mâine / ieri": "🗓️", "ora": "⏰",
+    "Cât e ceasul?": "⌚", "Este ora două și jumătate.": "🕝", "Este ora cinci și un sfert.": "🕔",
+    "Este ora șase fără un sfert.": "🕠", "Ce zi este azi?": "📆", "Azi este luni.": "📅",
+    "Cât costă?": "💶", "Costă zece lei.": "💵",
+    # Modulo 4
+    "familia": "👨‍👩‍👧‍👦", "mama / tata": "👩👨", "părinții": "👫", "fratele": "👦", "sora": "👧",
+    "fiul / fiica": "👶", "copilul / copiii": "🧒", "bunicul / bunica": "👴👵", "soțul / soția": "💑",
+    "unchiul / mătușa": "🧔👩", "vărul / verișoara": "🧑‍🤝‍🧑",
+    "Am un frate și o soră.": "👦👧", "Ai frați sau surori?": "❓", "Am doi copii.": "👧👦",
+    "Mama mea se numește Elena.": "👩", "Acesta este tatăl meu.": "👨", "Părinții mei locuiesc în Italia.": "🏡",
+    # Modulo 5
+    "pâine": "🍞", "apă plată / minerală": "💧", "vin / bere": "🍷", "cafea / ceai": "☕", "lapte": "🥛",
+    "carne / pui": "🍗", "pește": "🐟", "legume / fructe": "🥦", "brânză": "🧀", "meniul": "📋",
+    "nota": "🧾", "ciorbă / sarmale / mămăligă": "🍲",
+    "O masă pentru doi, vă rog.": "🍽️", "Meniul, vă rog.": "📋", "Aș dori o ciorbă și o apă plată.": "🍲",
+    "Ce recomandați?": "🤔", "Sunt vegetarian / vegetariană.": "🥗", "Este foarte bun!": "😋",
+    "Poftă bună!": "🍴", "Nota, vă rog.": "🧾",
+    # Modulo 6
+    "la stânga / la dreapta": "↔️", "drept înainte": "⬆️", "aici / acolo": "📍", "aproape / departe": "📏",
+    "gara": "🚉", "aeroportul": "✈️", "stația de autobuz": "🚏", "biletul": "🎫", "strada": "🛣️",
+    "farmacia / spitalul": "🏥", "hotelul": "🏨",
+    "Unde este gara?": "🚉", "Este departe?": "❓", "Nu, este aproape.": "📍",
+    "Mergeți drept înainte, apoi la stânga.": "⬆️⬅️", "Cât costă un bilet?": "🎫",
+    "Un bilet până la Brașov, vă rog.": "🚆", "Opriți aici, vă rog.": "🚕", "M-am rătăcit.": "😟",
+    # Modulo 7
+    "a fi": "🟰", "a avea": "🤲", "student / studentă": "🎓", "profesor / profesoară": "👩‍🏫",
+    "obosit / obosită": "😴", "fericit / fericită": "😄", "casă": "🏠", "mașină": "🚗", "timp": "⏳",
+    "foame / sete": "🍔🥤", "Sunt student.": "🎓", "Ea este profesoară.": "👩‍🏫", "Suntem din Napoli.": "🌋",
+    "Ești obosit?": "😴", "Avem o casă mică.": "🏠", "Ei au o mașină nouă.": "🚗",
+    "Mi-e foame. / Mi-e sete.": "🍔", "Nu am timp.": "⏳",
+    # Modulo 8
+    "un băiat → băiatul": "👦", "o fată → fata": "👧", "un tren → trenul": "🚆", "o casă → casa": "🏠",
+    "un frate → fratele": "👦", "o cafea → cafeaua": "☕", "un scaun → scaunul": "🪑",
+    "băieți → băieții": "👦👦", "fete → fetele": "👧👧", "trenuri → trenurile": "🚆🚆",
+    "Băiatul este student.": "🎓", "Fata are o carte.": "📖", "Trenul este aici.": "🚉",
+    "Cafeaua este bună.": "☕", "Casa este mare.": "🏡",
+}
+
+
+def elementi(modulo):
+    """Vocaboli e frasi del modulo come schede da imparare: {ro, pron, it, emoji, tipo}."""
+    icona = ICONE_MODULI.get(modulo["ordine"], "🇷🇴")
+    schede = []
+    for ro, pron, it in modulo["vocaboli"]:
+        schede.append({"ro": ro, "pron": pron, "it": it, "emoji": EMOJI.get(ro, icona), "tipo": "Vocabolo"})
+    for ro, it in modulo["frasi"]:
+        schede.append({"ro": ro, "pron": "", "it": it, "emoji": EMOJI.get(ro, icona), "tipo": "Frase"})
+    return schede
+
+
+def testo_da_leggere(ro):
+    """Testo per la sintesi vocale: niente frecce né parentesi esplicative."""
+    t = ro.replace("→", ",").replace(" / ", ", ")
+    return t
