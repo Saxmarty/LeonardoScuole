@@ -166,6 +166,9 @@ def verifica_credenziali(email_input, password_input, ricordami_spuntato):
         return False
 
     esito = risposta.get("esito")
+    if esito == "SCADUTO":
+        st.error(f"⛔ Il tuo abbonamento è scaduto il {risposta.get('data_scadenza', '')}. Contatta la segreteria per rinnovarlo.")
+        return False
     if esito == "BLOCCATO":
         st.error("⛔ Troppi tentativi errati: accesso bloccato per 15 minuti.")
         return False
@@ -188,7 +191,8 @@ def verifica_credenziali(email_input, password_input, ricordami_spuntato):
         "password": password_clean,
         "data_scadenza": str(utente.get("data_scadenza", "-")),
         "pacchetto": str(utente.get("pacchetto", "Liceo Scientifico")),
-        "foto": foto_url if foto_url.lower() != "nan" else ""
+        "foto": foto_url if foto_url.lower() != "nan" else "",
+        "primo_accesso": bool(utente.get("primo_accesso", False))
     }
     return True
 
@@ -908,6 +912,37 @@ else:
             f"</div>",
             unsafe_allow_html=True
         )
+
+    # PRIMO ACCESSO: la password temporanea ricevuta via email va cambiata prima di entrare
+    if dati.get("primo_accesso"):
+        _, col_centro, _ = st.columns([1, 1.4, 1])
+        with col_centro:
+            with st.container(border=True):
+                st.markdown("<h3 style='color:#7D001E; font-weight:800; margin-top:0;'>🔐 Scegli la tua password</h3>", unsafe_allow_html=True)
+                st.markdown("<p style='color:#475569;'>È il tuo primo accesso: per proteggere il tuo account sostituisci la password temporanea che hai ricevuto via email.</p>", unsafe_allow_html=True)
+                with st.form("form_primo_accesso"):
+                    pa_nuova = st.text_input("Nuova password (almeno 8 caratteri)", type="password", key="pa_nuova")
+                    pa_conf = st.text_input("Conferma nuova password", type="password", key="pa_conf")
+                    pa_invia = st.form_submit_button("💾 Salva e continua", type="primary", use_container_width=True)
+                if pa_invia:
+                    if pa_nuova != pa_conf or len(pa_nuova.strip()) < 8:
+                        st.error("⚠️ Le password devono coincidere ed essere lunghe almeno 8 caratteri.")
+                    elif pa_nuova.strip() == str(dati.get("password", "")).strip():
+                        st.error("⚠️ La nuova password deve essere diversa da quella temporanea.")
+                    else:
+                        risposta = chiama_script("CAMBIA_PASSWORD", email=dati.get("email"),
+                                                 password_attuale=dati.get("password", ""), nuova_password=pa_nuova)
+                        if risposta == "SUCCESS":
+                            st.session_state.dati_utente["password"] = pa_nuova.strip()
+                            st.session_state.dati_utente["primo_accesso"] = False
+                            st.rerun()
+                        else:
+                            st.error("❌ Salvataggio non riuscito, riprova tra poco.")
+                if st.button("🚪 Esci", key="pa_esci", type="tertiary"):
+                    st.session_state.autenticato = False
+                    st.session_state.dati_utente = {}
+                    st.rerun()
+        st.stop()
 
     # Menu Custom
     if st.session_state.sidebar_aperta:
