@@ -585,9 +585,11 @@ def dialog_login():
     div[data-testid="stDialog"] label p { color: #ffffff !important; }
     div[data-testid="stDialog"] div[data-testid="stAlert"], div[data-testid="stDialog"] div[role="alert"] { background-color: #ffffff !important; border-radius: 8px !important; }
     div[data-testid="stDialog"] div[data-testid="stAlert"] p, div[data-testid="stDialog"] div[role="alert"] p { color: #7D001E !important; font-weight: 700 !important; }
-    div[data-testid="stDialog"] .stButton > button:not([kind="tertiary"]) {
+    div[data-testid="stDialog"] .stButton > button:not([kind="tertiary"]),
+    div[data-testid="stDialog"] div[data-testid="stFormSubmitButton"] > button {
         background-color: #D4AF37 !important; color: #7D001E !important; font-weight: 800 !important; width: 100% !important; border: 2px solid #D4AF37 !important; margin-top: 10px !important;
     }
+    div[data-testid="stDialog"] div[data-testid="stFormSubmitButton"] > button p { color: #7D001E !important; }
     div[data-testid="stDialog"] .stButton > button:not([kind="tertiary"]):hover {
         background-color: #ffffff !important; color: #7D001E !important;
     }
@@ -603,11 +605,14 @@ def dialog_login():
     st.markdown('<div class="modal-title-custom">Accedi all\'Area Riservata</div>', unsafe_allow_html=True)
     
     # RIMOZIONE CREDENZIALI DI DEFAULT
-    email = st.text_input("Email", value="", placeholder="Email", label_visibility="collapsed", key="in_email")
-    password = st.text_input("Password", value="", type="password", placeholder="Password", label_visibility="collapsed", key="in_pw")
-    ricordami = st.checkbox("Ricordami", value=True, key="in_remember")
+    # Modulo unico: email e password vengono lette insieme anche se riempite dal browser
+    with st.form("form_login", border=False):
+        email = st.text_input("Email", value="", placeholder="Email", label_visibility="collapsed", key="in_email")
+        password = st.text_input("Password", value="", type="password", placeholder="Password", label_visibility="collapsed", key="in_pw")
+        ricordami = st.checkbox("Ricordami", value=True, key="in_remember")
+        accedi = st.form_submit_button("Accedi")
 
-    if st.button("Accedi", key="btn_login_act"):
+    if accedi:
         if email and password:
             if verifica_credenziali(email, password, ricordami):
                 st.session_state.autenticato = True
