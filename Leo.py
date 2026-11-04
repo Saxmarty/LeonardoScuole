@@ -150,8 +150,16 @@ def chiama_script(azione, **campi):
         payload["token"] = APPS_SCRIPT_TOKEN
     try:
         res = requests.post(WEB_APP_URL, data=payload, timeout=20)
-        return res.text.strip() if res.status_code == 200 else ""
-    except Exception:
+        if res.status_code != 200:
+            st.session_state["ultimo_errore_script"] = f"HTTP {res.status_code}"
+            return ""
+        testo = res.text.strip()
+        if testo.startswith("<"):
+            st.session_state["ultimo_errore_script"] = "pagina HTML (indirizzo dello script errato o deployment non accessibile a 'Chiunque')"
+            return ""
+        return testo
+    except Exception as e:
+        st.session_state["ultimo_errore_script"] = f"connessione fallita ({type(e).__name__})"
         return ""
 
 def verifica_credenziali(email_input, password_input, ricordami_spuntato):
@@ -162,7 +170,17 @@ def verifica_credenziali(email_input, password_input, ricordami_spuntato):
     try:
         risposta = json.loads(testo)
     except Exception:
-        st.error("Servizio di accesso non raggiungibile. Riprova tra poco.")
+        if testo == "UNAUTHORIZED":
+            motivo = "chiave segreta non valida (APPS_SCRIPT_TOKEN nei Secrets diverso da APP_TOKEN nello script)"
+        elif testo == "ERROR":
+            motivo = "errore interno dello script Google"
+        elif testo == "UNKNOWN_ACTION":
+            motivo = "lo script attivo è ancora la versione vecchia"
+        elif testo:
+            motivo = f"risposta inattesa: {testo[:60]}"
+        else:
+            motivo = st.session_state.pop("ultimo_errore_script", "nessuna risposta")
+        st.error(f"Servizio di accesso non raggiungibile. Motivo: {motivo}")
         return False
 
     esito = risposta.get("esito")
@@ -565,6 +583,8 @@ def dialog_login():
         color: #333333 !important;
     }
     div[data-testid="stDialog"] label p { color: #ffffff !important; }
+    div[data-testid="stDialog"] div[data-testid="stAlert"], div[data-testid="stDialog"] div[role="alert"] { background-color: #ffffff !important; border-radius: 8px !important; }
+    div[data-testid="stDialog"] div[data-testid="stAlert"] p, div[data-testid="stDialog"] div[role="alert"] p { color: #7D001E !important; font-weight: 700 !important; }
     div[data-testid="stDialog"] .stButton > button:not([kind="tertiary"]) {
         background-color: #D4AF37 !important; color: #7D001E !important; font-weight: 800 !important; width: 100% !important; border: 2px solid #D4AF37 !important; margin-top: 10px !important;
     }
@@ -611,6 +631,8 @@ def dialog_recupero():
     .modal-title-custom { color: #D4AF37; font-size: 1.4rem; font-weight: 800; margin-bottom: 15px; text-align: center; border-bottom: 2px solid #D4AF37; padding-bottom: 10px; }
     div[data-testid="stDialog"] input { background-color: #ffffff !important; border: 1px solid #D4AF37 !important; color: #333333 !important; }
     div[data-testid="stDialog"] label p { color: #ffffff !important; }
+    div[data-testid="stDialog"] div[data-testid="stAlert"], div[data-testid="stDialog"] div[role="alert"] { background-color: #ffffff !important; border-radius: 8px !important; }
+    div[data-testid="stDialog"] div[data-testid="stAlert"] p, div[data-testid="stDialog"] div[role="alert"] p { color: #7D001E !important; font-weight: 700 !important; }
     div[data-testid="stDialog"] .stButton > button:not([kind="tertiary"]) { background-color: #D4AF37 !important; color: #7D001E !important; font-weight: 800 !important; width: 100% !important; border: 2px solid #D4AF37 !important; }
     div[data-testid="stDialog"] .stButton > button[kind="tertiary"] { background: transparent !important; color: #D4AF37 !important; font-weight: 700 !important; text-decoration: underline !important; border: none !important; }
     div[data-testid="stDialog"] .stButton > button[kind="tertiary"]:hover { color: #ffffff !important; }
