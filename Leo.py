@@ -3,6 +3,14 @@ import pandas as pd
 import requests
 import base64
 import random
+import secrets
+import time
+import zlib
+
+try:
+    import corso_rumeno
+except Exception:
+    corso_rumeno = None
 
 # 1. CONFIGURAZIONE PAGINA
 st.set_page_config(
@@ -12,10 +20,28 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxDUpdEfTdpb87LLVpojzilavVfpEXldiSWvciWdyzn9vP_WD5jj9XTsIKZJ2-BODyN3g/exec"
-SPREADSHEET_CATALOGO_ID = "1e5DD36IPkFzKi1I2dAtAGXJNLJU8PO56M2dNIGPOuVc"
-CATALOGO_GID = "698645009"
-EMAIL_ADMIN = "gison.salvatore@gmail.com"
+# CONFIGURAZIONE RISERVATA: letta dai "Secrets" di Streamlit Cloud (non sta piu' nel codice).
+# Streamlit Cloud -> app -> Settings -> Secrets. In locale: file .streamlit/secrets.toml (non va su GitHub).
+def _leggi_secret(chiave, obbligatorio=True):
+    try:
+        valore = str(st.secrets[chiave]).strip()
+    except Exception:
+        valore = ""
+    if obbligatorio and not valore:
+        st.error(f"⚙️ Configurazione mancante: imposta **{chiave}** nei Secrets dell'app su Streamlit Cloud.")
+        st.stop()
+    return valore
+
+WEB_APP_URL = _leggi_secret("WEB_APP_URL")
+SPREADSHEET_CATALOGO_ID = _leggi_secret("SPREADSHEET_CATALOGO_ID")
+CATALOGO_GID = _leggi_secret("CATALOGO_GID")
+SPREADSHEET_UTENTI_ID = _leggi_secret("SPREADSHEET_UTENTI_ID")
+EMAIL_ADMIN = _leggi_secret("EMAIL_ADMIN")
+# Chiave condivisa con lo script Google: lo script rifiuta le richieste che non la contengono.
+APPS_SCRIPT_TOKEN = _leggi_secret("APPS_SCRIPT_TOKEN", obbligatorio=False)
+
+OTP_VALIDITA_SECONDI = 10 * 60
+OTP_MAX_TENTATIVI = 5
 
 # IMMAGINI PREDEFINITE PER MATERIE
 IMMAGINI_MATERIE = {
@@ -29,7 +55,9 @@ IMMAGINI_MATERIE = {
     "Filosofia": "https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=600&q=80",
     "Scienze Naturali": "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=600&q=80",
     "Disegno e Storia dell'Arte": "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=600&q=80",
-    "Educazione Civica": "https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=600&q=80"
+    "Educazione Civica": "https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=600&q=80",
+    "Lingua Rumena - Base": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=600&q=80",
+    "Grammatica Rumena": "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=600&q=80"
 }
 IMMAGINE_DEFAULT = "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=600&q=80"
 
@@ -51,6 +79,21 @@ if "open_recupero" not in st.session_state:
 
 if "otp_generato" not in st.session_state:
     st.session_state.otp_generato = ""
+
+if "otp_email" not in st.session_state:
+    st.session_state.otp_email = ""
+
+if "otp_scadenza" not in st.session_state:
+    st.session_state.otp_scadenza = 0.0
+
+if "otp_tentativi" not in st.session_state:
+    st.session_state.otp_tentativi = 0
+
+if "quiz_aperto" not in st.session_state:
+    st.session_state.quiz_aperto = None
+
+if "esiti_quiz" not in st.session_state:
+    st.session_state.esiti_quiz = {}
 
 if "password_cambiata_successo" not in st.session_state:
     st.session_state.password_cambiata_successo = False
@@ -94,22 +137,43 @@ def carica_catalogo_corsi():
             'VideoLezione': 'Video', 'Video': 'Video'
         }
         df = df.rename(columns=lambda c: rinomina_colonne.get(str(c).strip(), str(c).strip()))
-        return df
     except Exception as e:
         st.error(f"Errore nel caricamento del catalogo: {e}")
-        return pd.DataFrame()
+        df = pd.DataFrame()
+    return aggiungi_corso_rumeno(df)
+
+def aggiungi_corso_rumeno(df):
+    """Aggiunge al catalogo i moduli del Corso Rumeno (corso_rumeno.py) non ancora presenti nel foglio."""
+    if corso_rumeno is None:
+        return df
+    presenti = set()
+    if not df.empty and {'Indirizzo_Studio', 'Argomento'}.issubset(df.columns):
+        for ind, arg in zip(df['Indirizzo_Studio'], df['Argomento']):
+            presenti.add((str(ind).strip().lower(), str(arg).strip().lower()))
+    nuove = [r for r in corso_rumeno.righe_catalogo()
+             if (r['Indirizzo_Studio'].lower(), r['Argomento'].lower()) not in presenti]
+    if not nuove:
+        return df
+    return pd.concat([df, pd.DataFrame(nuove)], ignore_index=True)
+
+def _payload_script(dati_extra):
+    """Ogni richiesta allo script Google porta la chiave condivisa."""
+    payload = dict(dati_extra)
+    if APPS_SCRIPT_TOKEN:
+        payload["token"] = APPS_SCRIPT_TOKEN
+    return payload
 
 def invia_email_otp_google_script(email, otp_code):
     try:
-        payload = {"azione": "INVIA_OTP", "email": email, "otp_code": otp_code}
+        payload = _payload_script({"azione": "INVIA_OTP", "email": email, "otp_code": otp_code})
         res = requests.post(WEB_APP_URL, data=payload, timeout=15)
-        return (True, "OK") if "SUCCESS" in res.text else (False, f"Risposta server: {res.text[:50]}")
-    except Exception as e:
-        return False, str(e)
+        return (True, "OK") if "SUCCESS" in res.text else (False, "Invio non riuscito, riprova più tardi.")
+    except Exception:
+        return False, "Servizio email non raggiungibile."
 
 def aggiorna_password_google_sheet(email, nuova_password):
     try:
-        payload = {"email": email, "nuova_password": nuova_password, "primo_accesso": "NO"}
+        payload = _payload_script({"email": email, "nuova_password": nuova_password, "primo_accesso": "NO"})
         res = requests.post(WEB_APP_URL, data=payload, timeout=10)
         return res.status_code == 200 and ("SUCCESS" in res.text)
     except Exception:
@@ -117,15 +181,14 @@ def aggiorna_password_google_sheet(email, nuova_password):
 
 def aggiorna_foto_google_sheet(email, foto_base64_or_url):
     try:
-        payload = {"email": email, "foto": foto_base64_or_url}
+        payload = _payload_script({"email": email, "foto": foto_base64_or_url})
         res = requests.post(WEB_APP_URL, data=payload, timeout=10)
         return res.status_code == 200 and ("SUCCESS" in res.text)
     except Exception:
         return False
 
 def verifica_credenziali(email_input, password_input, ricordami_spuntato):
-    SPREADSHEET_ID = "1WnnnrDvRSOtxFa09TWLo9_AqK4zeOdh73-Hg5E1ZnnU"
-    url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv"
+    url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_UTENTI_ID}/export?format=csv"
     try:
         df = pd.read_csv(url)
         df.columns = df.columns.str.strip()
@@ -160,13 +223,12 @@ def verifica_credenziali(email_input, password_input, ricordami_spuntato):
             "foto": foto_url if foto_url.lower() != "nan" else ""
         }
         return True
-    except Exception as e:
-        st.error(f"Errore di connessione: {e}")
+    except Exception:
+        st.error("Errore di connessione al servizio di accesso. Riprova tra poco.")
         return False
 
 def verifica_email_esistente(email_input):
-    SPREADSHEET_ID = "1WnnnrDvRSOtxFa09TWLo9_AqK4zeOdh73-Hg5E1ZnnU"
-    url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv"
+    url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_UTENTI_ID}/export?format=csv"
     try:
         df = pd.read_csv(url)
         df.columns = df.columns.str.strip()
@@ -174,6 +236,67 @@ def verifica_email_esistente(email_input):
         return not df[df['Email'] == email_input.strip().lower()].empty
     except Exception:
         return False
+
+
+# 3b. LEZIONI E QUIZ INTERATTIVI (Corso Rumeno)
+def trova_lezione(titolo_argomento):
+    if corso_rumeno is None:
+        return None
+    return corso_rumeno.trova_modulo(titolo_argomento)
+
+def render_lezione(modulo):
+    tab_lez, tab_voc, tab_frasi = st.tabs(["📖 Lezione", "🔤 Vocaboli", "💬 Frasi utili"])
+    with tab_lez:
+        st.markdown(modulo["lezione"])
+    with tab_voc:
+        st.dataframe(
+            pd.DataFrame(modulo["vocaboli"], columns=["Rumeno", "Pronuncia", "Italiano"]),
+            use_container_width=True, hide_index=True
+        )
+        st.caption("Pronuncia: la sillaba in MAIUSCOLO è accentata · ə = vocale neutra (ă) · î = vocale di â/î · ts = z di «zio» · sc = sc di «scena»")
+    with tab_frasi:
+        st.dataframe(
+            pd.DataFrame(modulo["frasi"], columns=["Rumeno", "Italiano"]),
+            use_container_width=True, hide_index=True
+        )
+
+def render_quiz(modulo, chiave):
+    titolo = modulo["titolo"]
+    domande = modulo["quiz"]
+    st.markdown(f"<h4 style='color:#7D001E; font-weight:800;'>📝 Quiz: {titolo}</h4>", unsafe_allow_html=True)
+    st.caption(f"{len(domande)} domande · superi il modulo con almeno 18/30")
+
+    with st.form(f"form_quiz_{chiave}"):
+        risposte = []
+        for n, q in enumerate(domande, start=1):
+            # Ordine delle opzioni mescolato ma stabile (non cambia a ogni ricarica)
+            opzioni = list(q["opzioni"])
+            random.Random(zlib.crc32(q["domanda"].encode("utf-8"))).shuffle(opzioni)
+            risposte.append(st.radio(f"**{n}. {q['domanda']}**", opzioni, index=None, key=f"quiz_{chiave}_{n}"))
+        consegnato = st.form_submit_button("✅ Consegna il quiz", type="primary", use_container_width=True)
+
+    if consegnato:
+        if any(r is None for r in risposte):
+            st.warning("⚠️ Rispondi a tutte le domande prima di consegnare.")
+        else:
+            corrette = [r == q["opzioni"][q["corretta"]] for q, r in zip(domande, risposte)]
+            voto = round(sum(corrette) / len(domande) * 30)
+            st.session_state.esiti_quiz[titolo] = {"voto": voto, "corrette": corrette, "risposte": risposte}
+            st.session_state.risultati_quiz[f"Rumeno · {titolo}"] = voto
+            if voto >= 18:
+                st.session_state.moduli_completati.add(titolo)
+
+    esito = st.session_state.esiti_quiz.get(titolo)
+    if esito:
+        n_ok = sum(esito["corrette"])
+        if esito["voto"] >= 18:
+            st.success(f"🎉 Voto: **{esito['voto']}/30** ({n_ok}/{len(domande)} risposte esatte). Modulo superato e segnato come completato!")
+        else:
+            st.error(f"📚 Voto: **{esito['voto']}/30** ({n_ok}/{len(domande)} risposte esatte). Ripassa la lezione e riprova.")
+        with st.expander("🔍 Rivedi le risposte", expanded=esito["voto"] < 18):
+            for n, (q, ok, r) in enumerate(zip(domande, esito["corrette"], esito["risposte"]), start=1):
+                icona = "✅" if ok else "❌"
+                st.markdown(f"{icona} **{n}. {q['domanda']}**  \nLa tua risposta: *{r}* · Corretta: **{q['opzioni'][q['corretta']]}**  \n<span style='color:#475569;'>{q['spiegazione']}</span>", unsafe_allow_html=True)
 
 
 # 4. DIALOG POP-UP MODALI
@@ -269,14 +392,21 @@ def dialog_recupero():
     email_rec = st.text_input("Email recupero", placeholder="E-mail registrata", label_visibility="collapsed", key="rec_email_in")
 
     if st.button("Invia codice OTP via email", key="btn_send_otp_single"):
-        if email_rec and verifica_email_esistente(email_rec):
-            code_otp = str(random.randint(100000, 999999))
-            st.session_state.otp_generato = code_otp
-            esito, msgg = invia_email_otp_google_script(email_rec.strip().lower(), code_otp)
+        email_pulita = email_rec.strip().lower() if email_rec else ""
+        if email_pulita and verifica_email_esistente(email_pulita):
+            code_otp = f"{secrets.randbelow(900000) + 100000}"
+            esito, msgg = invia_email_otp_google_script(email_pulita, code_otp)
             if esito:
-                st.success("📩 Codice inviato con successo!")
+                # L'OTP vale solo per QUESTA email, per 10 minuti e per pochi tentativi
+                st.session_state.otp_generato = code_otp
+                st.session_state.otp_email = email_pulita
+                st.session_state.otp_scadenza = time.time() + OTP_VALIDITA_SECONDI
+                st.session_state.otp_tentativi = 0
             else:
                 st.error(f"❌ {msgg}")
+                return
+        # Stesso messaggio in ogni caso: non riveliamo quali email sono registrate
+        st.info("📩 Se l'email è registrata, riceverai un codice valido 10 minuti.")
 
     st.divider()
     otp_val = st.text_input("Codice OTP", placeholder="Codice OTP a 6 cifre", label_visibility="collapsed", key="rec_otp_in")
@@ -284,10 +414,29 @@ def dialog_recupero():
     new_p2 = st.text_input("Conferma Password", type="password", placeholder="Conferma Nuova Password", label_visibility="collapsed", key="rec_p2_in")
 
     if st.button("Aggiorna Password", key="btn_save_pw_single"):
-        if email_rec and otp_val == st.session_state.otp_generato and new_p1 == new_p2 and len(new_p1) >= 6:
-            if aggiorna_password_google_sheet(email_rec.strip().lower(), new_p1):
-                st.session_state.password_cambiata_successo = True
-                st.rerun()
+        email_pulita = email_rec.strip().lower() if email_rec else ""
+        otp_ok = (
+            st.session_state.otp_generato
+            and email_pulita == st.session_state.otp_email
+            and time.time() <= st.session_state.otp_scadenza
+            and st.session_state.otp_tentativi < OTP_MAX_TENTATIVI
+        )
+        if not otp_ok:
+            st.session_state.otp_generato = ""
+            st.error("⛔ Codice scaduto o non valido per questa email. Richiedine uno nuovo.")
+        elif not secrets.compare_digest(str(otp_val).strip(), st.session_state.otp_generato):
+            st.session_state.otp_tentativi += 1
+            rimasti = OTP_MAX_TENTATIVI - st.session_state.otp_tentativi
+            st.error(f"❌ Codice errato. Tentativi rimasti: {max(rimasti, 0)}.")
+        elif new_p1 != new_p2 or len(new_p1) < 8:
+            st.error("⚠️ Le password devono coincidere ed essere lunghe almeno 8 caratteri.")
+        elif aggiorna_password_google_sheet(email_pulita, new_p1):
+            st.session_state.otp_generato = ""
+            st.session_state.otp_email = ""
+            st.session_state.password_cambiata_successo = True
+            st.rerun()
+        else:
+            st.error("❌ Aggiornamento non riuscito, riprova.")
 
     if st.button("← Torna al Login", key="btn_back_log", type="tertiary"):
         st.session_state.open_recupero = False
@@ -647,12 +796,15 @@ else:
             p_nuova = st.text_input("Nuova Password", type="password", key="p_nuov")
             p_conf = st.text_input("Conferma Nuova Password", type="password", key="p_conf")
             if st.button("Aggiorna Password", key="btn_update_pw_profile"):
-                if p_nuova == p_conf and len(p_nuova) >= 6:
-                    if aggiorna_password_google_sheet(dati.get("email"), p_nuova):
-                        st.success("🎉 Password cambiata con successo!")
-                        st.session_state.dati_utente["password"] = p_nuova
+                if not secrets.compare_digest(str(p_att).strip(), str(dati.get("password", ""))):
+                    st.error("❌ La password attuale non è corretta.")
+                elif p_nuova != p_conf or len(p_nuova) < 8:
+                    st.error("⚠️ Le nuove password devono coincidere ed essere lunghe almeno 8 caratteri.")
+                elif aggiorna_password_google_sheet(dati.get("email"), p_nuova):
+                    st.success("🎉 Password cambiata con successo!")
+                    st.session_state.dati_utente["password"] = p_nuova
                 else:
-                    st.error("⚠️ Verifica le password inserite.")
+                    st.error("❌ Aggiornamento non riuscito, riprova.")
 
         st.divider()
         st.markdown("<h3 style='color: #7D001E !important; font-weight: 800;'>📈 Report Valutazioni & Quiz</h3>", unsafe_allow_html=True)
@@ -738,7 +890,7 @@ else:
                 if not val_ind or not val_anno or not val_mat or not argomento:
                     st.error("⚠️ Compila tutti i campi obbligatori: **Indirizzo**, **Anno**, **Materia** e **Argomento**.")
                 else:
-                    payload = {
+                    payload = _payload_script({
                         "azione": "AGGIUNGI_CORSO",
                         "Indirizzo_Studio": val_ind,
                         "Anno": val_anno,
@@ -747,7 +899,7 @@ else:
                         "Descrizione": descrizione,
                         "Dispensa": dispensa,
                         "Video": video
-                    }
+                    })
                     try:
                         res = requests.post(WEB_APP_URL, json=payload, timeout=10)
                         if res.status_code == 200:
@@ -756,8 +908,8 @@ else:
                             st.rerun()
                         else:
                             st.error(f"❌ Errore durante il salvataggio: HTTP {res.status_code}")
-                    except Exception as e:
-                        st.error(f"❌ Errore di connessione: {e}")
+                    except Exception:
+                        st.error("❌ Errore di connessione allo script Google.")
 
         st.divider()
         st.markdown("<h4 style='color: #7D001E;'>📋 Database Attuale Materiale Didattico</h4>", unsafe_allow_html=True)
@@ -841,13 +993,18 @@ else:
                             # SE IL MODULO E' APERTO, MOSTRA IL CONTENUTO
                             if is_open:
                                 st.markdown("<hr style='margin: 15px 0 20px 0; border: none; border-top: 1px dashed rgba(212, 175, 55, 0.4);'>", unsafe_allow_html=True)
+                                lezione = trova_lezione(titolo_arg)
+                                ha_video = pd.notna(video_url) and str(video_url).startswith("http")
                                 col_video, col_materiali = st.columns([2, 1])
-                                
+
                                 with col_video:
-                                    st.markdown("<h4 style='margin-top:0; color:#7D001E; font-weight:800;'><span style='font-size:1.2rem;'>🎥</span> Video Lezione</h4>", unsafe_allow_html=True)
-                                    if pd.notna(video_url) and str(video_url).startswith("http"):
+                                    if ha_video:
+                                        st.markdown("<h4 style='margin-top:0; color:#7D001E; font-weight:800;'><span style='font-size:1.2rem;'>🎥</span> Video Lezione</h4>", unsafe_allow_html=True)
                                         st.video(video_url)
+                                    elif lezione:
+                                        render_lezione(lezione)
                                     else:
+                                        st.markdown("<h4 style='margin-top:0; color:#7D001E; font-weight:800;'><span style='font-size:1.2rem;'>🎥</span> Video Lezione</h4>", unsafe_allow_html=True)
                                         st.markdown("<div class='custom-info-box'>Nessuna video lezione disponibile al momento per questo modulo.</div>", unsafe_allow_html=True)
                                         
                                 with col_materiali:
@@ -862,7 +1019,23 @@ else:
                                     st.markdown("<br>", unsafe_allow_html=True)
                                     
                                     # TASTO TEST PRIMARY FORZATO (Amaranto e Oro via CSS)
-                                    st.button("📝 Avvia Test / Quiz", key=f"btn_quiz_{i_row}", type="primary", use_container_width=True)
+                                    quiz_aperto_qui = (st.session_state.quiz_aperto == titolo_arg)
+                                    etichetta_quiz = "✖ Chiudi Quiz" if quiz_aperto_qui else "📝 Avvia Test / Quiz"
+                                    if st.button(etichetta_quiz, key=f"btn_quiz_{i_row}", type="primary", use_container_width=True):
+                                        st.session_state.quiz_aperto = None if quiz_aperto_qui else titolo_arg
+                                        st.rerun()
+
+                                # Lezione sotto al video (se il modulo ha sia video sia lezione scritta)
+                                if lezione and ha_video:
+                                    render_lezione(lezione)
+
+                                # QUIZ A TUTTA LARGHEZZA
+                                if st.session_state.quiz_aperto == titolo_arg:
+                                    st.markdown("<hr style='margin: 15px 0; border: none; border-top: 1px dashed rgba(212, 175, 55, 0.4);'>", unsafe_allow_html=True)
+                                    if lezione and lezione.get("quiz"):
+                                        render_quiz(lezione, f"{'c' if is_comp else 'p'}_{i_row}")
+                                    else:
+                                        st.markdown("<div class='custom-info-box'>Il quiz di questo modulo non è ancora disponibile.</div>", unsafe_allow_html=True)
 
                 with tab_pendenti:
                     df_pend = df_student[~df_student['Argomento'].isin(st.session_state.moduli_completati)]
