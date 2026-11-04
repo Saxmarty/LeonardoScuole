@@ -2,9 +2,8 @@ import streamlit as st
 import pandas as pd
 import requests
 import base64
+import json
 import random
-import secrets
-import time
 import zlib
 
 try:
@@ -35,13 +34,9 @@ def _leggi_secret(chiave, obbligatorio=True):
 WEB_APP_URL = _leggi_secret("WEB_APP_URL")
 SPREADSHEET_CATALOGO_ID = _leggi_secret("SPREADSHEET_CATALOGO_ID")
 CATALOGO_GID = _leggi_secret("CATALOGO_GID")
-SPREADSHEET_UTENTI_ID = _leggi_secret("SPREADSHEET_UTENTI_ID")
 EMAIL_ADMIN = _leggi_secret("EMAIL_ADMIN")
 # Chiave condivisa con lo script Google: lo script rifiuta le richieste che non la contengono.
-APPS_SCRIPT_TOKEN = _leggi_secret("APPS_SCRIPT_TOKEN", obbligatorio=False)
-
-OTP_VALIDITA_SECONDI = 10 * 60
-OTP_MAX_TENTATIVI = 5
+APPS_SCRIPT_TOKEN = _leggi_secret("APPS_SCRIPT_TOKEN")
 
 # IMMAGINI PREDEFINITE PER MATERIE
 IMMAGINI_MATERIE = {
@@ -76,18 +71,6 @@ if "open_login" not in st.session_state:
 
 if "open_recupero" not in st.session_state:
     st.session_state.open_recupero = False
-
-if "otp_generato" not in st.session_state:
-    st.session_state.otp_generato = ""
-
-if "otp_email" not in st.session_state:
-    st.session_state.otp_email = ""
-
-if "otp_scadenza" not in st.session_state:
-    st.session_state.otp_scadenza = 0.0
-
-if "otp_tentativi" not in st.session_state:
-    st.session_state.otp_tentativi = 0
 
 if "quiz_aperto" not in st.session_state:
     st.session_state.quiz_aperto = None
@@ -156,86 +139,54 @@ def aggiungi_corso_rumeno(df):
         return df
     return pd.concat([df, pd.DataFrame(nuove)], ignore_index=True)
 
-def _payload_script(dati_extra):
-    """Ogni richiesta allo script Google porta la chiave condivisa."""
-    payload = dict(dati_extra)
+def chiama_script(azione, **campi):
+    """Invia un'azione allo script Google (sempre con la chiave segreta). Restituisce il testo della risposta, "" se irraggiungibile."""
+    payload = {"azione": azione, **campi}
     if APPS_SCRIPT_TOKEN:
         payload["token"] = APPS_SCRIPT_TOKEN
-    return payload
-
-def invia_email_otp_google_script(email, otp_code):
     try:
-        payload = _payload_script({"azione": "INVIA_OTP", "email": email, "otp_code": otp_code})
-        res = requests.post(WEB_APP_URL, data=payload, timeout=15)
-        return (True, "OK") if "SUCCESS" in res.text else (False, "Invio non riuscito, riprova più tardi.")
+        res = requests.post(WEB_APP_URL, data=payload, timeout=20)
+        return res.text.strip() if res.status_code == 200 else ""
     except Exception:
-        return False, "Servizio email non raggiungibile."
-
-def aggiorna_password_google_sheet(email, nuova_password):
-    try:
-        payload = _payload_script({"email": email, "nuova_password": nuova_password, "primo_accesso": "NO"})
-        res = requests.post(WEB_APP_URL, data=payload, timeout=10)
-        return res.status_code == 200 and ("SUCCESS" in res.text)
-    except Exception:
-        return False
-
-def aggiorna_foto_google_sheet(email, foto_base64_or_url):
-    try:
-        payload = _payload_script({"email": email, "foto": foto_base64_or_url})
-        res = requests.post(WEB_APP_URL, data=payload, timeout=10)
-        return res.status_code == 200 and ("SUCCESS" in res.text)
-    except Exception:
-        return False
+        return ""
 
 def verifica_credenziali(email_input, password_input, ricordami_spuntato):
-    url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_UTENTI_ID}/export?format=csv"
+    """Il controllo della password avviene dentro lo script Google: il foglio utenti puo' restare privato."""
+    email_clean = email_input.strip().lower()
+    password_clean = str(password_input).strip()
+    testo = chiama_script("LOGIN", email=email_clean, password=password_clean)
     try:
-        df = pd.read_csv(url)
-        df.columns = df.columns.str.strip()
-        df['Email'] = df['Email'].astype(str).str.strip().str.lower()
-        df['Password'] = df['Password'].astype(str).str.strip()
-
-        email_clean = email_input.strip().lower()
-        password_clean = str(password_input).strip()
-
-        utente = df[(df['Email'] == email_clean) & (df['Password'] == password_clean)]
-        if utente.empty:
-            st.error("❌ Email o password non corrette.")
-            return False
-
-        riga = utente.iloc[0]
-        stato_utente = str(riga.get('Stato', 'Attivo')).strip()
-        if stato_utente.lower() != 'attivo':
-            st.error(f"⛔ Accesso negato: Account '{stato_utente}'. Contatta la segreteria.")
-            return False
-
-        nominativo_usr = riga.get('Nominativo', email_clean)
-        foto_url = str(riga.get('Foto', '')).strip()
-
-        st.session_state.dati_utente = {
-            "id_cliente": str(riga.get('IDcliente', '1')),
-            "nominativo": nominativo_usr,
-            "stato": stato_utente,
-            "email": email_clean,
-            "password": password_clean,
-            "data_scadenza": str(riga.get('Data Scadenza', '-')),
-            "pacchetto": str(riga.get('Pacchetto Acquistato', 'Liceo Scientifico')),
-            "foto": foto_url if foto_url.lower() != "nan" else ""
-        }
-        return True
+        risposta = json.loads(testo)
     except Exception:
-        st.error("Errore di connessione al servizio di accesso. Riprova tra poco.")
+        st.error("Servizio di accesso non raggiungibile. Riprova tra poco.")
         return False
 
-def verifica_email_esistente(email_input):
-    url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_UTENTI_ID}/export?format=csv"
-    try:
-        df = pd.read_csv(url)
-        df.columns = df.columns.str.strip()
-        df['Email'] = df['Email'].astype(str).str.strip().str.lower()
-        return not df[df['Email'] == email_input.strip().lower()].empty
-    except Exception:
+    esito = risposta.get("esito")
+    if esito == "BLOCCATO":
+        st.error("⛔ Troppi tentativi errati: accesso bloccato per 15 minuti.")
         return False
+    if esito != "OK":
+        st.error("❌ Email o password non corrette.")
+        return False
+
+    utente = risposta.get("utente", {})
+    stato_utente = str(utente.get("stato", "Attivo")).strip()
+    if stato_utente.lower() != "attivo":
+        st.error(f"⛔ Accesso negato: Account '{stato_utente}'. Contatta la segreteria.")
+        return False
+
+    foto_url = str(utente.get("foto", "")).strip()
+    st.session_state.dati_utente = {
+        "id_cliente": str(utente.get("id_cliente", "1")),
+        "nominativo": utente.get("nominativo", email_clean),
+        "stato": stato_utente,
+        "email": email_clean,
+        "password": password_clean,
+        "data_scadenza": str(utente.get("data_scadenza", "-")),
+        "pacchetto": str(utente.get("pacchetto", "Liceo Scientifico")),
+        "foto": foto_url if foto_url.lower() != "nan" else ""
+    }
+    return True
 
 
 # 3b. LEZIONI E QUIZ INTERATTIVI (Corso Rumeno)
@@ -385,7 +336,6 @@ def dialog_recupero():
             st.session_state.password_cambiata_successo = False
             st.session_state.open_recupero = False
             st.session_state.open_login = True
-            st.session_state.otp_generato = ""
             st.rerun()
         return
 
@@ -393,20 +343,17 @@ def dialog_recupero():
 
     if st.button("Invia codice OTP via email", key="btn_send_otp_single"):
         email_pulita = email_rec.strip().lower() if email_rec else ""
-        if email_pulita and verifica_email_esistente(email_pulita):
-            code_otp = f"{secrets.randbelow(900000) + 100000}"
-            esito, msgg = invia_email_otp_google_script(email_pulita, code_otp)
-            if esito:
-                # L'OTP vale solo per QUESTA email, per 10 minuti e per pochi tentativi
-                st.session_state.otp_generato = code_otp
-                st.session_state.otp_email = email_pulita
-                st.session_state.otp_scadenza = time.time() + OTP_VALIDITA_SECONDI
-                st.session_state.otp_tentativi = 0
+        if not email_pulita:
+            st.error("⚠️ Inserisci la tua email.")
+        else:
+            # Il codice viene generato, inviato e controllato dallo script Google
+            risposta = chiama_script("RICHIEDI_OTP", email=email_pulita)
+            if risposta == "SUCCESS":
+                st.info("📩 Se l'email è registrata, riceverai un codice valido 10 minuti.")
+            elif risposta == "TROPPE_RICHIESTE":
+                st.warning("⏳ Hai richiesto troppi codici. Riprova tra un'ora.")
             else:
-                st.error(f"❌ {msgg}")
-                return
-        # Stesso messaggio in ogni caso: non riveliamo quali email sono registrate
-        st.info("📩 Se l'email è registrata, riceverai un codice valido 10 minuti.")
+                st.error("❌ Servizio email non raggiungibile, riprova più tardi.")
 
     st.divider()
     otp_val = st.text_input("Codice OTP", placeholder="Codice OTP a 6 cifre", label_visibility="collapsed", key="rec_otp_in")
@@ -415,28 +362,21 @@ def dialog_recupero():
 
     if st.button("Aggiorna Password", key="btn_save_pw_single"):
         email_pulita = email_rec.strip().lower() if email_rec else ""
-        otp_ok = (
-            st.session_state.otp_generato
-            and email_pulita == st.session_state.otp_email
-            and time.time() <= st.session_state.otp_scadenza
-            and st.session_state.otp_tentativi < OTP_MAX_TENTATIVI
-        )
-        if not otp_ok:
-            st.session_state.otp_generato = ""
-            st.error("⛔ Codice scaduto o non valido per questa email. Richiedine uno nuovo.")
-        elif not secrets.compare_digest(str(otp_val).strip(), st.session_state.otp_generato):
-            st.session_state.otp_tentativi += 1
-            rimasti = OTP_MAX_TENTATIVI - st.session_state.otp_tentativi
-            st.error(f"❌ Codice errato. Tentativi rimasti: {max(rimasti, 0)}.")
+        if not email_pulita or not otp_val:
+            st.error("⚠️ Inserisci email e codice OTP.")
         elif new_p1 != new_p2 or len(new_p1) < 8:
             st.error("⚠️ Le password devono coincidere ed essere lunghe almeno 8 caratteri.")
-        elif aggiorna_password_google_sheet(email_pulita, new_p1):
-            st.session_state.otp_generato = ""
-            st.session_state.otp_email = ""
-            st.session_state.password_cambiata_successo = True
-            st.rerun()
         else:
-            st.error("❌ Aggiornamento non riuscito, riprova.")
+            risposta = chiama_script("RESET_PASSWORD", email=email_pulita, otp=str(otp_val).strip(), nuova_password=new_p1)
+            if risposta == "SUCCESS":
+                st.session_state.password_cambiata_successo = True
+                st.rerun()
+            elif risposta == "OTP_ERRATO":
+                st.error("❌ Codice errato. Dopo 5 errori il codice non è più valido.")
+            elif risposta == "OTP_SCADUTO":
+                st.error("⛔ Codice scaduto o non valido per questa email. Richiedine uno nuovo.")
+            else:
+                st.error("❌ Aggiornamento non riuscito, riprova.")
 
     if st.button("← Torna al Login", key="btn_back_log", type="tertiary"):
         st.session_state.open_recupero = False
@@ -776,10 +716,14 @@ else:
                 encoded = base64.b64encode(bytes_data).decode()
                 base64_src = f"data:{uploaded_file.type};base64,{encoded}"
                 if st.button("Salva Foto", key="btn_save_photo"):
-                    st.session_state.dati_utente["foto"] = base64_src
-                    aggiorna_foto_google_sheet(dati.get("email"), base64_src)
-                    st.success("✅ Foto profilo aggiornata con successo!")
-                    st.rerun()
+                    risposta = chiama_script("AGGIORNA_FOTO", email=dati.get("email"), password=dati.get("password", ""), foto=base64_src)
+                    if risposta == "SUCCESS":
+                        st.session_state.dati_utente["foto"] = base64_src
+                        st.rerun()
+                    elif risposta == "FOTO_TROPPO_GRANDE":
+                        st.error("⚠️ Immagine troppo grande: usa una foto più piccola (circa 30 KB).")
+                    else:
+                        st.error("❌ Salvataggio della foto non riuscito, riprova.")
 
         with col_dati:
             st.markdown("<h3 style='color: #7D001E !important; font-weight: 800;'>Dati Account</h3>", unsafe_allow_html=True)
@@ -796,15 +740,17 @@ else:
             p_nuova = st.text_input("Nuova Password", type="password", key="p_nuov")
             p_conf = st.text_input("Conferma Nuova Password", type="password", key="p_conf")
             if st.button("Aggiorna Password", key="btn_update_pw_profile"):
-                if not secrets.compare_digest(str(p_att).strip(), str(dati.get("password", ""))):
-                    st.error("❌ La password attuale non è corretta.")
-                elif p_nuova != p_conf or len(p_nuova) < 8:
+                if p_nuova != p_conf or len(p_nuova) < 8:
                     st.error("⚠️ Le nuove password devono coincidere ed essere lunghe almeno 8 caratteri.")
-                elif aggiorna_password_google_sheet(dati.get("email"), p_nuova):
-                    st.success("🎉 Password cambiata con successo!")
-                    st.session_state.dati_utente["password"] = p_nuova
                 else:
-                    st.error("❌ Aggiornamento non riuscito, riprova.")
+                    risposta = chiama_script("CAMBIA_PASSWORD", email=dati.get("email"), password_attuale=str(p_att).strip(), nuova_password=p_nuova)
+                    if risposta == "SUCCESS":
+                        st.success("🎉 Password cambiata con successo!")
+                        st.session_state.dati_utente["password"] = p_nuova.strip()
+                    elif risposta == "PASSWORD_ERRATA":
+                        st.error("❌ La password attuale non è corretta.")
+                    else:
+                        st.error("❌ Aggiornamento non riuscito, riprova.")
 
         st.divider()
         st.markdown("<h3 style='color: #7D001E !important; font-weight: 800;'>📈 Report Valutazioni & Quiz</h3>", unsafe_allow_html=True)
@@ -890,26 +836,20 @@ else:
                 if not val_ind or not val_anno or not val_mat or not argomento:
                     st.error("⚠️ Compila tutti i campi obbligatori: **Indirizzo**, **Anno**, **Materia** e **Argomento**.")
                 else:
-                    payload = _payload_script({
-                        "azione": "AGGIUNGI_CORSO",
-                        "Indirizzo_Studio": val_ind,
-                        "Anno": val_anno,
-                        "Materia": val_mat,
-                        "Argomento": argomento,
-                        "Descrizione": descrizione,
-                        "Dispensa": dispensa,
-                        "Video": video
-                    })
-                    try:
-                        res = requests.post(WEB_APP_URL, json=payload, timeout=10)
-                        if res.status_code == 200:
-                            st.success(f"✅ Modulo **'{argomento}'** aggiunto con successo!")
-                            st.cache_data.clear()
-                            st.rerun()
-                        else:
-                            st.error(f"❌ Errore durante il salvataggio: HTTP {res.status_code}")
-                    except Exception:
-                        st.error("❌ Errore di connessione allo script Google.")
+                    risposta = chiama_script(
+                        "AGGIUNGI_CORSO",
+                        email=dati.get("email"), password=dati.get("password", ""),
+                        Indirizzo_Studio=val_ind, Anno=val_anno, Materia=val_mat,
+                        Argomento=argomento, Descrizione=descrizione, Dispensa=dispensa, Video=video
+                    )
+                    if risposta == "SUCCESS":
+                        st.toast(f"✅ Modulo '{argomento}' aggiunto con successo!")
+                        st.cache_data.clear()
+                        st.rerun()
+                    elif risposta == "UNAUTHORIZED":
+                        st.error("⛔ Operazione consentita solo all'amministratore.")
+                    else:
+                        st.error("❌ Salvataggio non riuscito: il modulo non è stato aggiunto al foglio.")
 
         st.divider()
         st.markdown("<h4 style='color: #7D001E;'>📋 Database Attuale Materiale Didattico</h4>", unsafe_allow_html=True)
