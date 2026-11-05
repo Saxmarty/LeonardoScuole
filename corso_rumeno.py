@@ -532,6 +532,11 @@ FRASARIO = {
 
 # Frasi chiave del documento (quelle dei quiz) -> numero della voce audio corrispondente
 FRASE_AUDIO = {
+    "Patru": 78,
+    "Șase": 80,
+    "Șapte": 81,
+    "Opt": 82,
+    "Nouă": 83,
     "Bună ziua": 1,
     "Bună seara": 2,
     "La revedere": 3,
@@ -719,7 +724,12 @@ MODULI_RUMENO = [
             ("Unu", "Uno"),
             ("Doi", "Due"),
             ("Trei", "Tre"),
+            ("Patru", "Quattro"),
             ("Cinci", "Cinque"),
+            ("Șase", "Sei"),
+            ("Șapte", "Sette"),
+            ("Opt", "Otto"),
+            ("Nouă", "Nove"),
             ("Zece", "Dieci"),
             ("Douăzeci", "Venti"),
             ("O sută", "Cento"),
@@ -1143,6 +1153,11 @@ MODULI_RUMENO = [
 ICONE_MODULI = {1: "👋", 2: "🗣️", 3: "🎨", 4: "🔢", 5: "📅", 6: "🚕", 7: "👨‍👩‍👧", 8: "😊", 9: "☕", 10: "🍽️", 11: "🚆", 12: "🏨", 13: "📞", 14: "🏖️", 15: "🆘"}
 
 EMOJI = {
+    "Patru": "4️⃣",
+    "Șase": "6️⃣",
+    "Șapte": "7️⃣",
+    "Opt": "8️⃣",
+    "Nouă": "9️⃣",
     "Bună ziua": "🌞",
     "Bună seara": "🌆",
     "La revedere": "🙋",
@@ -1361,7 +1376,7 @@ def elementi(modulo):
     icona = ICONE_MODULI.get(modulo["ordine"], "💬")
     schede, usate = [], set()
     for ro, it in modulo["frasi"]:
-        n = FRASE_AUDIO.get(ro)
+        n = (modulo.get("audio_frasi") or {}).get(ro) or FRASE_AUDIO.get(ro)
         if n:
             usate.add(n)
         schede.append({"ro": ro, "pron": "", "it": it, "emoji": EMOJI.get(ro, icona), "tipo": "⭐ Frase del modulo",
@@ -1386,3 +1401,62 @@ def frasi_chiave(modulo):
 def testo_da_leggere(ro):
     """Testo per la sintesi vocale."""
     return ro.replace("→", ",").replace(" / ", ", ")
+
+
+# ----------------------------------------------------------------------
+# PERSONALIZZAZIONI DAL PANNELLO DI CONTROLLO
+# Il pannello salva un dizionario (config) che viene applicato sopra i contenuti predefiniti.
+# ----------------------------------------------------------------------
+import copy as _copy
+
+_BASE_MODULI = _copy.deepcopy(MODULI_RUMENO)
+_BASE_TESTI = {"NOME_CORSO": NOME_CORSO, "ORE_CORSO": ORE_CORSO, "TESTO_DOCENTE": TESTO_DOCENTE,
+               "BENVENUTO": _copy.deepcopy(BENVENUTO)}
+
+
+def testi_predefiniti():
+    b = _BASE_TESTI["BENVENUTO"]
+    return {"nome_corso": _BASE_TESTI["NOME_CORSO"], "ore": _BASE_TESTI["ORE_CORSO"],
+            "testo_docente": _BASE_TESTI["TESTO_DOCENTE"], "titolo_menu": "Lingua Rumena",
+            "benvenuto_titolo": b["titolo"], "benvenuto_sottotitolo": b["sottotitolo"],
+            "obiettivo": b["obiettivo"], "motto": b["motto"], "chiusura": b["chiusura"]}
+
+
+def modulo_predefinito(ordine):
+    return next(m for m in _BASE_MODULI if m["ordine"] == ordine)
+
+
+def applica_personalizzazioni(cfg):
+    """Rimette i contenuti predefiniti e ci applica sopra la config del pannello."""
+    global NOME_CORSO, ORE_CORSO, TESTO_DOCENTE, TITOLO_MENU, _INDICE
+    cfg = cfg or {}
+    testi = {**testi_predefiniti(), **{k: v for k, v in (cfg.get("testi") or {}).items() if v not in (None, "")}}
+    NOME_CORSO = testi["nome_corso"]
+    try:
+        ORE_CORSO = int(testi["ore"])
+    except Exception:
+        ORE_CORSO = _BASE_TESTI["ORE_CORSO"]
+    TESTO_DOCENTE = testi["testo_docente"]
+    TITOLO_MENU = testi["titolo_menu"]
+    BENVENUTO.clear()
+    BENVENUTO.update(_copy.deepcopy(_BASE_TESTI["BENVENUTO"]))
+    BENVENUTO.update({"titolo": testi["benvenuto_titolo"], "sottotitolo": testi["benvenuto_sottotitolo"],
+                      "obiettivo": testi["obiettivo"], "motto": testi["motto"], "chiusura": testi["chiusura"]})
+    MODULI_RUMENO[:] = _copy.deepcopy(_BASE_MODULI)
+    for m in MODULI_RUMENO:
+        mod = (cfg.get("moduli") or {}).get(str(m["ordine"])) or {}
+        if mod.get("nome"):
+            m["nome"] = mod["nome"]          # il "titolo" resta fisso: serve a riconoscere i moduli superati
+        if mod.get("descrizione"):
+            m["descrizione"] = mod["descrizione"]
+        if mod.get("frasi"):
+            m["frasi"] = [(f[0], f[1]) for f in mod["frasi"] if f and f[0] and f[1]]
+            m["audio_frasi"] = {f[0]: int(f[2]) for f in mod["frasi"] if f and f[0] and len(f) > 2 and str(f[2]).strip().isdigit()}
+        if mod.get("quiz"):
+            m["quiz"] = [{"domanda": q["domanda"], "opzioni": q["opzioni"], "corretta": int(q["corretta"]),
+                          "spiegazione": f"Risposta giusta: «{q['opzioni'][int(q['corretta'])]}»."}
+                         for q in mod["quiz"] if q.get("domanda") and len(q.get("opzioni", [])) == 4]
+    _INDICE = {_norm(m["titolo"]): m for m in MODULI_RUMENO}
+
+
+TITOLO_MENU = "Lingua Rumena"

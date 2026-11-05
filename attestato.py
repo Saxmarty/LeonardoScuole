@@ -65,8 +65,11 @@ def _a_capo(c, testo, font, dim, larghezza):
 
 def genera_attestato(nominativo, email, corso, contenuti, ore, n_moduli, media_quiz,
                      data_inizio, data_fine, logo_bytes=None, firmatario="", ruolo_firmatario="Il Coordinatore didattico",
-                     luogo="", ente="Leonardo Scuole"):
+                     luogo="", ente="Leonardo Scuole", colori=None):
     """Restituisce i byte del PDF dell'attestato."""
+    colori = colori or {}
+    BORDEAUX = HexColor(colori.get("primario", "#8D021F"))
+    ORO = HexColor(colori.get("oro", "#D4AF37"))
     buffer = io.BytesIO()
     W, H = landscape(A4)
     c = canvas.Canvas(buffer, pagesize=(W, H))

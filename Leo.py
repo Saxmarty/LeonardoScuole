@@ -373,7 +373,7 @@ def player_lezione(url, chiave, prossimo="", visto=False, anticipo=12, auto=True
     if _player_lezione is None:
         st.video(url)
         return None
-    valore = _player_lezione(src=url, prossimo=prossimo, libero=True, anticipo=anticipo,
+    valore = _player_lezione(src=url, prossimo=prossimo, libero=True, anticipo=anticipo, colori=palette(),
                              auto=auto, secondi_auto=secondi_auto, key=chiave, default=None)
     if not isinstance(valore, dict):
         return None
@@ -572,9 +572,11 @@ def lettore_audio(scheda, chiave, autoplay=False):
     pagina = (LETTORE_HTML.replace("%%DATI%%", base64.b64encode(dati).decode("ascii")).replace("%%MIME%%", "audio/mpeg")
               .replace("%%NOTA%%", nota).replace("%%AUTO%%", "true" if autoplay else "false")
               .replace("<style>", f"<style>/* {chiave} */"))
-    components.html(pagina, height=86)
+    components.html(applica_colori(pagina), height=86)
 
 def _titolo_breve(modulo):
+    if modulo.get("nome"):
+        return modulo["nome"]
     titolo = modulo["titolo"]
     return titolo.split(" - ", 1)[1] if " - " in titolo else titolo
 
@@ -870,7 +872,7 @@ def render_corso_rumeno(is_admin=False):
         st.markdown(f"""
         <div class="ro-nav-hero">
             <div class="ro-nav-hero-kicker">CORSO ONLINE</div>
-            <div class="ro-nav-hero-tit">Lingua Rumena</div>
+            <div class="ro-nav-hero-tit">{html.escape(corso_rumeno.TITOLO_MENU)}</div>
             <div class="ro-nav-hero-sub">{len(moduli)} moduli · {corso_rumeno.ORE_CORSO} ore · attestato finale</div>
             <div class="ro-barra"><div style="width:{perc}%;"></div></div>
             <div class="ro-nav-hero-sub">{len(completati)}/{len(moduli)} completati · {perc}%</div>
@@ -1015,7 +1017,7 @@ def render_area_attestati(dati, is_admin=False):
             nominativo=nome, email=email, corso=corso_rumeno.NOME_CORSO, contenuti=contenuti,
             ore=corso_rumeno.ORE_CORSO, n_moduli=len(moduli), media_quiz=media,
             data_inizio=inizio, data_fine=fine, logo_bytes=scarica_logo(),
-            firmatario=ATTESTATO_FIRMATARIO, luogo=ATTESTATO_LUOGO)
+            firmatario=ATTESTATO_FIRMATARIO, luogo=ATTESTATO_LUOGO, ruolo_firmatario=ATTESTATO_RUOLO, colori=palette())
 
     nome = str(dati.get("nominativo", "Studente")).strip()
     if completo:
@@ -1033,6 +1035,264 @@ def render_area_attestati(dati, is_admin=False):
             pdf, codice = _pdf(nome_prova, "anteprima@leonardoscuole.it")
             st.download_button("👁️ Scarica anteprima", data=pdf, file_name="Anteprima_Attestato_Rumeno.pdf",
                                mime="application/pdf", use_container_width=True, key="att_prova_btn")
+
+
+# 3e. PERSONALIZZAZIONI (colori, logo, testi) E PANNELLO DI CONTROLLO
+# Il pannello e' visibile solo al proprietario. Le modifiche si salvano sul foglio Google
+# (azioni SALVA_CONFIG / LEGGI_CONFIG dello script) e valgono per tutti gli studenti.
+PROPRIETARIO_PANNELLO = (_leggi_secret("EMAIL_PANNELLO", obbligatorio=False) or "gison.salvatore@gmail.com").strip().lower()
+FILE_CONFIG_LOCALE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_piattaforma.json")
+COLORI_PREDEFINITI = {"primario": "#8D021F", "primario_scuro": "#5E0015", "accento": "#F3E32A", "oro": "#D4AF37"}
+# colore predefinito -> chiave della palette (#7D001E e' il bordeaux dell'intestazione dell'app)
+_MAPPA_COLORI = {"#8D021F": "primario", "#7D001E": "primario", "#5E0015": "primario_scuro",
+                 "#F3E32A": "accento", "#D4AF37": "oro"}
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _leggi_config_remota():
+    testo = chiama_script("LEGGI_CONFIG")
+    try:
+        cfg = json.loads(testo) if testo and testo.strip().startswith("{") else None
+        return cfg if isinstance(cfg, dict) else None
+    except Exception:
+        return None
+
+def config_attiva():
+    """Bozza del pannello (se il proprietario sta modificando) > foglio Google > file nel progetto."""
+    if "cfg_bozza" in st.session_state:
+        return st.session_state.cfg_bozza
+    cfg = _leggi_config_remota()
+    if cfg is None and os.path.exists(FILE_CONFIG_LOCALE):
+        try:
+            with open(FILE_CONFIG_LOCALE, encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = None
+    return cfg or {}
+
+def palette(cfg=None):
+    cfg = config_attiva() if cfg is None else cfg
+    return {**COLORI_PREDEFINITI, **{k: v for k, v in (cfg.get("colori") or {}).items() if v}}
+
+def applica_colori(testo, pal=None):
+    pal = pal or palette()
+    if pal == COLORI_PREDEFINITI:
+        return testo
+    for vecchio, chiave in _MAPPA_COLORI.items():
+        nuovo = pal.get(chiave, vecchio)
+        testo = testo.replace(vecchio, nuovo).replace(vecchio.lower(), nuovo)
+    return testo
+
+CONFIG = config_attiva()
+if corso_rumeno is not None:
+    corso_rumeno.applica_personalizzazioni(CONFIG)
+_att = CONFIG.get("attestato") or {}
+ATTESTATO_FIRMATARIO = _att.get("firmatario") or ATTESTATO_FIRMATARIO
+ATTESTATO_LUOGO = _att.get("luogo") or ATTESTATO_LUOGO
+ATTESTATO_RUOLO = _att.get("ruolo") or "Il Coordinatore didattico"
+if CONFIG.get("logo_b64"):
+    try:
+        LOGO_BYTES = base64.b64decode(CONFIG["logo_b64"])
+        LOGO_SRC = f"data:{CONFIG.get('logo_mime', 'image/png')};base64,{CONFIG['logo_b64']}"
+    except Exception:
+        pass
+
+# Colori: si applicano a tutti gli stili e ai blocchi HTML della pagina
+_PALETTE = palette(CONFIG)
+if _PALETTE != COLORI_PREDEFINITI and not getattr(st, "_ls_colori", False):
+    _markdown_originale = st.markdown
+    def _markdown_colorato(body, *args, **kwargs):
+        if isinstance(body, str) and kwargs.get("unsafe_allow_html"):
+            body = applica_colori(body, palette())
+        return _markdown_originale(body, *args, **kwargs)
+    st.markdown = _markdown_colorato
+    st._ls_colori = True
+
+
+def _salva_config(cfg):
+    dati = st.session_state.get("dati_utente", {})
+    risposta = chiama_script("SALVA_CONFIG", email=dati.get("email", ""), password=dati.get("password", ""),
+                             config=json.dumps(cfg, ensure_ascii=False))
+    _leggi_config_remota.clear()
+    return risposta
+
+def _bozza():
+    if "cfg_bozza" not in st.session_state:
+        st.session_state.cfg_bozza = json.loads(json.dumps(config_attiva()))
+    return st.session_state.cfg_bozza
+
+def render_pannello_controllo():
+    st.markdown(STILI_CORSO_RO, unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#8D021F; font-weight:800; margin-top:0;'>⚙️ Pannello di controllo</h2>", unsafe_allow_html=True)
+    st.markdown("<p class='ro-sotto'>Le modifiche si vedono subito qui per te. Premi <b>Salva per tutti</b> per pubblicarle agli studenti.</p>",
+                unsafe_allow_html=True)
+    cfg = _bozza()
+    t_col, t_logo, t_testi, t_mod, t_att, t_salva = st.tabs(["🎨 Colori", "🖼️ Logo", "📝 Testi", "📚 Moduli", "🎓 Attestato", "💾 Salva"])
+
+    with t_col:
+        pal = palette(cfg)
+        nomi = {"primario": "Colore principale (bordeaux)", "primario_scuro": "Principale scuro (sfumature)",
+                "accento": "Accento (giallo)", "oro": "Oro (bordi e dettagli)"}
+        c = st.columns(4)
+        nuovi = {}
+        for i, (k, etichetta) in enumerate(nomi.items()):
+            nuovi[k] = c[i].color_picker(etichetta, pal[k], key=f"pc_col_{k}")
+        if nuovi != pal:
+            cfg["colori"] = nuovi
+        st.markdown(f"""<div style="display:flex; gap:12px; margin-top:10px;">
+            <div style="flex:1; height:70px; border-radius:14px; background:linear-gradient(135deg,{nuovi['primario']},{nuovi['primario_scuro']});"></div>
+            <div style="flex:1; height:70px; border-radius:14px; background:{nuovi['accento']};"></div>
+            <div style="flex:1; height:70px; border-radius:14px; background:{nuovi['oro']};"></div></div>""", unsafe_allow_html=True)
+        if st.button("↺ Colori originali del sito", key="pc_col_reset"):
+            cfg.pop("colori", None)
+            for k in nomi:
+                st.session_state.pop(f"pc_col_{k}", None)
+            st.rerun()
+
+    with t_logo:
+        if LOGO_BYTES:
+            st.image(base64.b64decode(cfg["logo_b64"]) if cfg.get("logo_b64") else LOGO_BYTES, width=320, caption="Logo attuale")
+        nuovo = st.file_uploader("Carica un nuovo logo (PNG o JPG, massimo 300 KB)", type=["png", "jpg", "jpeg"], key="pc_logo")
+        if nuovo is not None:
+            dati_logo = nuovo.getvalue()
+            if len(dati_logo) > 300_000:
+                st.error("Il file è troppo grande: usa un'immagine sotto i 300 KB.")
+            else:
+                cfg["logo_b64"] = base64.b64encode(dati_logo).decode("ascii")
+                cfg["logo_mime"] = "image/png" if nuovo.name.lower().endswith(".png") else "image/jpeg"
+                st.success("Logo pronto: premi «Salva per tutti» per pubblicarlo.")
+        if cfg.get("logo_b64") and st.button("↺ Torna al logo ufficiale", key="pc_logo_reset"):
+            cfg.pop("logo_b64", None); cfg.pop("logo_mime", None)
+            st.rerun()
+
+    with t_testi:
+        base = corso_rumeno.testi_predefiniti()
+        testi = cfg.setdefault("testi", {})
+        etichette = {"nome_corso": "Nome del corso (attestato)", "titolo_menu": "Titolo nel menu del corso", "ore": "Ore del corso",
+                     "benvenuto_titolo": "Benvenuto: titolo", "benvenuto_sottotitolo": "Benvenuto: sottotitolo",
+                     "obiettivo": "Obiettivo del corso", "testo_docente": "Testo del docente (in ogni modulo)",
+                     "motto": "Frase sotto i 3 passi", "chiusura": "Frase di chiusura"}
+        for k, etichetta in etichette.items():
+            attuale = testi.get(k, base[k])
+            if k == "ore":
+                v = st.number_input(etichetta, min_value=1, max_value=500, value=int(attuale), key=f"pc_t_{k}")
+            elif k == "testo_docente":
+                v = st.text_area(etichetta, str(attuale), key=f"pc_t_{k}", height=110)
+            else:
+                v = st.text_input(etichetta, str(attuale), key=f"pc_t_{k}")
+            if v != base[k]:
+                testi[k] = v
+            else:
+                testi.pop(k, None)
+
+    with t_mod:
+        scelta = st.selectbox("Modulo da modificare", [m["ordine"] for m in corso_rumeno._BASE_MODULI],
+                              format_func=lambda o: f"Modulo {o} · {_titolo_breve(corso_rumeno.modulo_predefinito(o))}", key="pc_mod_sel")
+        base_m = corso_rumeno.modulo_predefinito(scelta)
+        mod = (cfg.setdefault("moduli", {})).setdefault(str(scelta), {})
+        nome = st.text_input("Titolo del modulo", mod.get("nome") or _titolo_breve(base_m), key=f"pc_m_nome_{scelta}")
+        descr = st.text_area("Obiettivo / descrizione", mod.get("descrizione") or base_m["descrizione"], key=f"pc_m_descr_{scelta}", height=70)
+        if nome != _titolo_breve(base_m): mod["nome"] = nome
+        else: mod.pop("nome", None)
+        if descr != base_m["descrizione"]: mod["descrizione"] = descr
+        else: mod.pop("descrizione", None)
+
+        st.markdown("**Frasi del modulo** · nella colonna *Voce audio* metti il numero del file madrelingua (1–440), vuota = voce sintetica")
+        frasi_base = [[ro, it, corso_rumeno.FRASE_AUDIO.get(ro) or ""] for ro, it in base_m["frasi"]]
+        righe = mod.get("frasi") or frasi_base
+        df = pd.DataFrame(righe, columns=["Rumeno", "Italiano", "Voce audio"]).astype({"Voce audio": str})
+        df_mod = st.data_editor(df, num_rows="dynamic", use_container_width=True, hide_index=True, key=f"pc_m_frasi_{scelta}")
+        nuove = [[str(r["Rumeno"]).strip(), str(r["Italiano"]).strip(), str(r["Voce audio"]).strip().replace("nan", "").replace("None", "")]
+                 for _, r in df_mod.iterrows() if str(r["Rumeno"]).strip() and str(r["Rumeno"]) != "nan"]
+        if nuove != [[a, b, str(c)] for a, b, c in frasi_base]: mod["frasi"] = nuove
+        else: mod.pop("frasi", None)
+
+        with st.expander("🔎 Cerca nel frasario registrato (440 voci) per trovare il numero dell'audio"):
+            cerca = st.text_input("Parola in italiano o in rumeno", key=f"pc_cerca_{scelta}")
+            if cerca.strip():
+                q = cerca.strip().lower()
+                trovate = [(n, it, ro) for n, (it, ro) in corso_rumeno.FRASARIO.items() if q in it.lower() or q in ro.lower()][:30]
+                if trovate:
+                    st.dataframe(pd.DataFrame(trovate, columns=["Voce audio", "Italiano", "Rumeno"]), hide_index=True, use_container_width=True)
+                    ascolta_n = st.selectbox("Ascolta una voce", [t[0] for t in trovate], key=f"pc_ascolta_{scelta}")
+                    if corso_rumeno.file_voce(ascolta_n):
+                        st.audio(leggi_file_audio(corso_rumeno.file_voce(ascolta_n)), format="audio/mp3")
+                else:
+                    st.caption("Nessuna voce trovata.")
+
+        st.markdown("**Quiz finale** · nella colonna *Giusta* scrivi A, B, C o D")
+        lettere = "ABCD"
+        quiz_base = [[q["domanda"], *q["opzioni"], lettere[q["corretta"]]] for q in base_m["quiz"]]
+        quiz_righe = [[q["domanda"], *q["opzioni"], lettere[int(q["corretta"])]] for q in mod["quiz"]] if mod.get("quiz") else quiz_base
+        dq = st.data_editor(pd.DataFrame(quiz_righe, columns=["Domanda", "A", "B", "C", "D", "Giusta"]), num_rows="dynamic",
+                            use_container_width=True, hide_index=True, key=f"pc_m_quiz_{scelta}",
+                            column_config={"Giusta": st.column_config.SelectboxColumn("Giusta", options=list(lettere), required=True)})
+        nuovo_quiz = [[str(r[c]).strip() for c in ["Domanda", "A", "B", "C", "D", "Giusta"]] for _, r in dq.iterrows()
+                      if str(r["Domanda"]).strip() and str(r["Domanda"]) != "nan"]
+        if nuovo_quiz != quiz_base:
+            mod["quiz"] = [{"domanda": r[0], "opzioni": r[1:5], "corretta": lettere.index(r[5]) if r[5] in lettere else 0} for r in nuovo_quiz]
+        else:
+            mod.pop("quiz", None)
+        if not mod:
+            cfg["moduli"].pop(str(scelta), None)
+        if st.button("↺ Ripristina questo modulo come nel Word", key=f"pc_m_reset_{scelta}"):
+            cfg["moduli"].pop(str(scelta), None)
+            for k in list(st.session_state.keys()):
+                if k.startswith("pc_m_") and k.endswith(f"_{scelta}"):
+                    del st.session_state[k]
+            st.rerun()
+
+    with t_att:
+        att = cfg.setdefault("attestato", {})
+        for k, etichetta, pred in [("firmatario", "Firmatario", "Ciro Di Dato"), ("ruolo", "Ruolo sotto la firma", "Il Coordinatore didattico"),
+                                   ("luogo", "Luogo", "Napoli")]:
+            v = st.text_input(etichetta, att.get(k, pred), key=f"pc_a_{k}")
+            if v != pred: att[k] = v
+            else: att.pop(k, None)
+        if attestato is not None:
+            pdf, _ = attestato.genera_attestato(
+                nominativo="Mario Rossi", email="anteprima@leonardoscuole.it", corso=corso_rumeno.NOME_CORSO,
+                contenuti=", ".join(_titolo_breve(m) for m in corso_rumeno.MODULI_RUMENO), ore=corso_rumeno.ORE_CORSO,
+                n_moduli=len(corso_rumeno.MODULI_RUMENO), media_quiz=90, data_inizio=date.today().strftime("%d/%m/%Y"),
+                data_fine=date.today().strftime("%d/%m/%Y"),
+                logo_bytes=base64.b64decode(cfg["logo_b64"]) if cfg.get("logo_b64") else LOGO_BYTES,
+                firmatario=att.get("firmatario", "Ciro Di Dato"), ruolo_firmatario=att.get("ruolo", "Il Coordinatore didattico"),
+                luogo=att.get("luogo", "Napoli"), colori=palette(cfg))
+            st.download_button("👁️ Scarica l'anteprima dell'attestato", data=pdf, file_name="Anteprima_attestato.pdf",
+                               mime="application/pdf", key="pc_a_prova")
+
+    with t_salva:
+        cfg_pulita = {k: v for k, v in cfg.items() if v not in ({}, [], None, "")}
+        st.markdown("**Salva per tutti**: pubblica le modifiche sul foglio Google, gli studenti le vedono entro un minuto.")
+        if st.button("💾 Salva per tutti", key="pc_salva", type="primary", use_container_width=True):
+            risposta = _salva_config(cfg_pulita)
+            if risposta == "SUCCESS":
+                st.success("✅ Salvato: le modifiche sono pubblicate.")
+            elif risposta == "UNKNOWN_ACTION":
+                st.error("Lo script Google non conosce ancora SALVA_CONFIG: aggiungi le funzioni di «apps_script_progressi.gs». "
+                         "Intanto scarica la copia qui sotto.")
+            else:
+                st.error(f"Salvataggio non riuscito ({risposta or st.session_state.pop('ultimo_errore_script', 'nessuna risposta')}). Scarica la copia qui sotto.")
+        st.download_button("⬇️ Scarica una copia delle impostazioni (JSON)", data=json.dumps(cfg_pulita, ensure_ascii=False, indent=1),
+                           file_name="config_piattaforma.json", mime="application/json", use_container_width=True, key="pc_scarica")
+        caricato = st.file_uploader("⬆️ Carica una copia salvata", type=["json"], key="pc_carica")
+        if caricato is not None and st.button("Usa questa copia", key="pc_carica_ok"):
+            try:
+                st.session_state.cfg_bozza = json.loads(caricato.getvalue().decode("utf-8"))
+                st.rerun()
+            except Exception:
+                st.error("File non valido.")
+        st.divider()
+        c1, c2 = st.columns(2)
+        if c1.button("↩️ Annulla le modifiche non salvate", key="pc_annulla", use_container_width=True):
+            st.session_state.pop("cfg_bozza", None)
+            for k in [k for k in st.session_state.keys() if str(k).startswith("pc_")]:
+                del st.session_state[k]
+            st.rerun()
+        if c2.button("🧹 Ripristina tutto come nel Word", key="pc_tutto_reset", use_container_width=True):
+            st.session_state.cfg_bozza = {}
+            for k in [k for k in st.session_state.keys() if str(k).startswith("pc_")]:
+                del st.session_state[k]
+            st.rerun()
 
 
 # 4. DIALOG POP-UP MODALI
@@ -1503,6 +1763,14 @@ else:
                         st.session_state.materia_attiva_card = None
                         st.rerun()
 
+            if str(dati.get("email", "")).strip().lower() == PROPRIETARIO_PANNELLO:
+                with st.expander("⚙️ Pannello di controllo", expanded=False):
+                    st.caption("Colori, logo, testi, moduli e attestato.")
+                    if st.button("⚙️ Apri il pannello", key="sb_btn_pannello", use_container_width=True):
+                        st.session_state.sezione_attiva = "Pannello"
+                        st.session_state.materia_attiva_card = None
+                        st.rerun()
+
             with st.expander("🎓 Area Attestati", expanded=False):
                 st.caption("Scarica l'attestato dei corsi che hai completato.")
                 if st.button("🎓 I miei attestati", key="sb_btn_attestati", use_container_width=True):
@@ -1530,7 +1798,10 @@ else:
             st.markdown('<div class="menu-footer-signature">Piattaforma realizzata da SG Managements</div>', unsafe_allow_html=True)
 
     # CONTENUTO PRINCIPALE
-    if st.session_state.sezione_attiva == "Attestati":
+    if st.session_state.sezione_attiva == "Pannello" and str(dati.get("email", "")).strip().lower() == PROPRIETARIO_PANNELLO:
+        render_pannello_controllo()
+
+    elif st.session_state.sezione_attiva == "Attestati":
         render_area_attestati(dati, is_admin)
 
     elif st.session_state.sezione_attiva == "Profilo":

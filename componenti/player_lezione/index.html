@@ -143,6 +143,15 @@
     const a = e.data.args;
     const primo = !args || args.src !== a.src;
     args = a;
+    if (a.colori && !window.__colori) {
+      window.__colori = true;
+      const mappa = {"#8D021F": a.colori.primario, "#5E0015": a.colori.primario_scuro, "#F3E32A": a.colori.accento};
+      document.querySelectorAll("style").forEach(st => {
+        let t = st.textContent;
+        for (const [v, n] of Object.entries(mappa)) if (n) t = t.split(v).join(n);
+        st.textContent = t;
+      });
+    }
     if (primo) {
       // I file statici stanno accanto all'app: su Streamlit Cloud sotto /~/+/, in locale alla radice
       let src = a.src;

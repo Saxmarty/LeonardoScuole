@@ -11,11 +11,14 @@
  *
  *      if (azione === "SALVA_PROGRESSI") return salvaProgressi_(e.parameter);
  *      if (azione === "LEGGI_PROGRESSI") return leggiProgressi_(e.parameter);
+ *      if (azione === "SALVA_CONFIG")    return salvaConfig_(e.parameter);
+ *      if (azione === "LEGGI_CONFIG")    return leggiConfig_();
  *
  *    (mettile DOPO il controllo del token, come le altre azioni).
  * 4. Distribuisci > Gestisci distribuzioni > modifica > Nuova versione.
  *
- * Il foglio "Progressi" viene creato da solo al primo salvataggio.
+ * I fogli "Progressi" e "Config" vengono creati da soli al primo salvataggio.
+ * SALVA_CONFIG (pannello di controllo) accetta solo l'email del proprietario.
  * Per sicurezza le funzioni ricontrollano email e password con verificaUtente_():
  * sostituiscila con la funzione che il tuo script usa gia' per il LOGIN.
  */
@@ -60,4 +63,35 @@ function leggiProgressi_(p) {
 /** DA SOSTITUIRE con la verifica gia' usata dall'azione LOGIN del tuo script. */
 function verificaUtente_(email, password) {
   return true;
+}
+
+
+/* ---------- PANNELLO DI CONTROLLO: colori, logo, testi ---------- */
+var PROPRIETARIO_PANNELLO = "gison.salvatore@gmail.com";
+var PEZZO = 40000; // una cella di Google Sheets tiene al massimo 50.000 caratteri
+
+function foglioConfig_() {
+  var ss = SpreadsheetApp.getActive();
+  return ss.getSheetByName("Config") || ss.insertSheet("Config");
+}
+
+function salvaConfig_(p) {
+  var email = String(p.email || "").trim().toLowerCase();
+  if (email !== PROPRIETARIO_PANNELLO || !verificaUtente_(email, p.password)) return ContentService.createTextOutput("UNAUTHORIZED");
+  var testo = String(p.config || "{}");
+  var pezzi = [];
+  for (var i = 0; i < testo.length; i += PEZZO) pezzi.push(testo.substring(i, i + PEZZO));
+  var sh = foglioConfig_();
+  sh.clear();
+  sh.getRange(1, 1, 1, 2).setValues([["Aggiornato il", new Date()]]);
+  if (pezzi.length) sh.getRange(2, 1, pezzi.length, 1).setValues(pezzi.map(function (x) { return [x]; }));
+  return ContentService.createTextOutput("SUCCESS");
+}
+
+function leggiConfig_() {
+  var sh = foglioConfig_();
+  var ultima = sh.getLastRow();
+  if (ultima < 2) return ContentService.createTextOutput("{}");
+  var valori = sh.getRange(2, 1, ultima - 1, 1).getValues();
+  return ContentService.createTextOutput(valori.map(function (r) { return String(r[0]); }).join("") || "{}");
 }
