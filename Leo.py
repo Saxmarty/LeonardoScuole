@@ -510,6 +510,69 @@ def riproduci(scheda, lento=False):
             height=0,
         )
 
+LETTORE_HTML = """
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; font-family:'Poppins',sans-serif; background:transparent; }
+  .riga { display:flex; gap:10px; align-items:center; }
+  button { font:600 15px 'Poppins',sans-serif; border-radius:30px; cursor:pointer; padding:11px 20px; display:flex; align-items:center; gap:8px; transition:all .15s; }
+  .play { flex:1; justify-content:center; border:none; color:#fff; background:linear-gradient(135deg,#8D021F 0%,#5E0015 100%); box-shadow:0 6px 16px rgba(141,2,31,.25); }
+  .play:hover { transform:translateY(-1px); box-shadow:0 10px 22px rgba(141,2,31,.32); }
+  .play.on { background:linear-gradient(135deg,#F3E32A 0%,#F5A623 100%); color:#5E0015; }
+  .lento { background:#fff; color:#1F2326; border:1.5px solid #1F2326; }
+  .lento:hover { background:#F3E32A; border-color:#F3E32A; }
+  .onda { display:inline-flex; gap:3px; height:16px; align-items:flex-end; }
+  .onda i { width:3px; background:currentColor; border-radius:2px; height:4px; }
+  .on .onda i { animation:o .8s infinite ease-in-out; }
+  .onda i:nth-child(2){animation-delay:.1s} .onda i:nth-child(3){animation-delay:.2s} .onda i:nth-child(4){animation-delay:.3s}
+  @keyframes o { 0%,100%{height:4px} 50%{height:16px} }
+  .nota { font-size:11px; color:#8a8a8a; margin-top:6px; text-align:center; }
+</style>
+<div class="riga">
+  <button class="play" id="p"><span class="onda"><i></i><i></i><i></i><i></i></span><span id="pt">Ascolta</span></button>
+  <button class="lento" id="l">🐢 Lento</button>
+</div>
+<div class="nota">%%NOTA%%</div>
+<audio id="a" preload="auto" src="data:%%MIME%%;base64,%%DATI%%"></audio>
+<script>
+  const a = document.getElementById("a"), p = document.getElementById("p");
+  function suona(vel) { a.pause(); a.currentTime = 0; a.playbackRate = vel; a.preservesPitch = true; a.play().catch(() => {}); }
+  p.onclick = () => suona(1);
+  document.getElementById("l").onclick = () => suona(0.7);
+  a.onplay = () => p.classList.add("on");
+  a.onpause = a.onended = () => p.classList.remove("on");
+  function tasto(e) {
+    if (e.code !== "Space") return;
+    const t = (e.target && e.target.tagName || "").toLowerCase();
+    if (["input", "textarea", "select"].includes(t)) return;
+    e.preventDefault(); suona(1);
+  }
+  document.addEventListener("keydown", tasto);
+  try {
+    const d = window.parent.document;
+    if (d.__lsTasto) d.removeEventListener("keydown", d.__lsTasto);
+    d.__lsTasto = tasto; d.addEventListener("keydown", tasto);
+  } catch (e) {}
+  if (%%AUTO%%) setTimeout(() => suona(1), 250);
+</script>
+"""
+
+def lettore_audio(scheda, chiave, autoplay=False):
+    """Pulsanti Ascolta / Lento nella pagina: riparte a ogni clic, senza ricaricare. Spazio = ascolta."""
+    if scheda.get("audio"):
+        dati, nota = leggi_file_audio(scheda["audio"]), "🎙️ Registrazione madrelingua · premi spazio per riascoltare"
+    else:
+        dati = audio_rumeno(corso_rumeno.testo_da_leggere(scheda["ro"]))
+        nota = "🤖 Voce sintetica · premi spazio per riascoltare"
+    if not dati:
+        st.caption("Audio non disponibile in questo momento.")
+        return
+    pagina = (LETTORE_HTML.replace("%%DATI%%", base64.b64encode(dati).decode("ascii")).replace("%%MIME%%", "audio/mpeg")
+              .replace("%%NOTA%%", nota).replace("%%AUTO%%", "true" if autoplay else "false")
+              .replace("<style>", f"<style>/* {chiave} */"))
+    components.html(pagina, height=86)
+
 def _titolo_breve(modulo):
     titolo = modulo["titolo"]
     return titolo.split(" - ", 1)[1] if " - " in titolo else titolo
@@ -658,9 +721,10 @@ def render_impara(modulo, rs):
         </div>
         """, unsafe_allow_html=True)
 
-        b1, b2, b3 = st.columns(3)
-        ascolta = b1.button("▶ Ascolta", key=f"ro_play_{ordine}_{idx}", use_container_width=True)
-        lento = b2.button("🐢 Lento", key=f"ro_slow_{ordine}_{idx}", use_container_width=True, help="Lettura rallentata (voce sintetica)")
+        b1, b3 = st.columns([2, 1], vertical_alignment="top")
+        with b1:
+            lettore_audio(s, f"impara_{ordine}_{idx}")
+        segna_attivita_corso()
         with b3.popover("🎤 Registrati", use_container_width=True):
             st.caption("Ascolta la frase, poi registra la tua voce e confrontala con l'originale.")
             if hasattr(st, "audio_input"):
@@ -669,10 +733,6 @@ def render_impara(modulo, rs):
                     st.audio(registrazione)
             else:
                 st.info("Registrazione non disponibile in questa versione.")
-        if ascolta or lento:
-            segna_attivita_corso()
-            riproduci(s, lento=lento)
-
         n1, n2 = st.columns(2)
         if n1.button("← Precedente", key=f"ro_prev_{ordine}", disabled=(idx == 0), use_container_width=True):
             rs["scheda"][ordine] = idx - 1
@@ -763,13 +823,7 @@ def render_esercizio(modulo, rs, tipo):
         </div>
         """, unsafe_allow_html=True)
 
-    a1, a2 = st.columns(2)
-    ascolta = a1.button("▶ Ascolta", key=f"ro_ex_play_{tipo}_{ordine}_{n}", use_container_width=True)
-    lento = a2.button("🐢 Lento", key=f"ro_ex_slow_{tipo}_{ordine}_{n}", use_container_width=True)
-    primo_ascolto = (tipo == "ascolta" and stato["auto"] != n)
-    if ascolta or lento or primo_ascolto:
-        stato["auto"] = n
-        riproduci(s, lento=lento)
+    lettore_audio(s, f"ex_{tipo}_{ordine}_{n}", autoplay=(tipo == "ascolta" and not risposto))
 
     griglia = st.columns(2)
     for k, opzione in enumerate(d["opzioni"]):
