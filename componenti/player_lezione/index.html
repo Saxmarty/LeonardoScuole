@@ -27,6 +27,17 @@
   .rivedi { border: 1px solid rgba(255,255,255,0.5); background: transparent; color: #fff; border-radius: 30px;
             font: 600 13px 'Poppins', sans-serif; padding: 9px 14px; cursor: pointer; }
   .nota { color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 8px; }
+  /* Pulsante play grande al centro */
+  .play { position: absolute; left: 50%; top: 50%; width: 92px; height: 92px; margin: -46px 0 0 -46px; border-radius: 50%;
+          border: none; cursor: pointer; background: linear-gradient(135deg,#8D021F 0%,#5E0015 100%);
+          box-shadow: 0 10px 30px rgba(0,0,0,0.45), 0 0 0 6px rgba(255,255,255,0.18); transition: transform .2s, opacity .25s; }
+  .play:hover { transform: scale(1.08); }
+  .play::after { content: ""; position: absolute; left: 36px; top: 26px; border-style: solid; border-width: 20px 0 20px 32px;
+                 border-color: transparent transparent transparent #F3E32A; }
+  .play.via { opacity: 0; pointer-events: none; transform: scale(0.8); }
+  .tasto { position: absolute; left: 50%; top: calc(50% + 62px); transform: translateX(-50%); color: #fff; font-size: 12px;
+           background: rgba(0,0,0,0.55); padding: 4px 12px; border-radius: 30px; transition: opacity .25s; pointer-events: none; }
+  .tasto.via { opacity: 0; }
   .stato { font-size: 13px; color: #626262; padding: 8px 4px 0 4px; }
   .stato b { color: #8D021F; }
 </style>
@@ -34,6 +45,8 @@
 <body>
 <div class="box" id="box">
   <video id="v" controls playsinline preload="metadata" controlslist="nodownload noplaybackrate" disablepictureinpicture></video>
+  <button class="play" id="play" aria-label="Riproduci"></button>
+  <div class="tasto" id="tasto">Premi <b>spazio</b> per avviare</div>
   <div class="avviso" id="avviso">⏩ Non si può andare avanti: guarda il video fino alla fine</div>
   <div class="prossimo" id="pross">
     <div class="k">PROSSIMO</div>
@@ -96,6 +109,34 @@
     v.currentTime = 0; v.play();
   });
   window.addEventListener("resize", altezza);
+
+  // Play al centro + barra spaziatrice (anche quando il cursore e' sulla pagina e non sul video)
+  const play = document.getElementById("play"), tasto = document.getElementById("tasto");
+  function aggiornaPlay() { const fermo = v.paused || v.ended; play.classList.toggle("via", !fermo); tasto.classList.toggle("via", !fermo); }
+  function alterna() { if (v.paused || v.ended) { v.play(); } else { v.pause(); } }
+  play.addEventListener("click", alterna);
+  v.addEventListener("play", () => { aggiornaPlay(); try { window.parent.__lsPlayerAttivo = window.frameElement; } catch (e) {} });
+  v.addEventListener("pause", aggiornaPlay);
+  v.addEventListener("ended", aggiornaPlay);
+  function tastiera(e) {
+    if (e.code !== "Space" && e.key !== " ") return;
+    const t = e.target, tag = (t && t.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select" || (t && t.isContentEditable)) return;
+    if (tag === "button" && t !== play) return;
+    // con piu' video nella pagina comanda quello usato per ultimo, altrimenti il primo
+    let attivo = null;
+    try {
+      attivo = window.parent.__lsPlayerAttivo;
+      if (!attivo || !window.parent.document.contains(attivo)) {
+        attivo = [...window.parent.document.querySelectorAll("iframe")].find(f => f.src && f.src.includes("player_lezione")) || null;
+      }
+    } catch (err) { attivo = null; }
+    if (attivo && attivo !== window.frameElement && e.currentTarget !== document) return;
+    e.preventDefault(); alterna();
+  }
+  document.addEventListener("keydown", tastiera);
+  try { window.parent.document.addEventListener("keydown", tastiera); } catch (e) {}
+  aggiornaPlay();
 
   window.addEventListener("message", (e) => {
     if (!e.data || e.data.type !== "streamlit:render") return;

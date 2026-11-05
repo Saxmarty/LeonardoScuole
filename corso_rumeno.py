@@ -1351,7 +1351,7 @@ def tracce_modulo(modulo):
 def elementi(modulo):
     """Schede da imparare: prima le 8 frasi chiave del modulo, poi tutte le altre voci del frasario.
     Ogni scheda: {ro, pron, it, emoji, tipo, audio, voce}."""
-    icona = ICONE_MODULI.get(modulo["ordine"], "🇷🇴")
+    icona = ICONE_MODULI.get(modulo["ordine"], "💬")
     schede, usate = [], set()
     for ro, it in modulo["frasi"]:
         n = FRASE_AUDIO.get(ro)

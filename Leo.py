@@ -392,9 +392,35 @@ SOGLIA_ESERCIZIO = 5  # risposte giuste su 6 (80%) per segnare la tappa come fat
 
 STILI_CORSO_RO = """
 <style>
-.ro-card { background:#ffffff; border:2px solid #D4AF37; border-radius:16px; overflow:hidden;
-           box-shadow:0 10px 30px rgba(125,0,30,0.08); margin-bottom:14px; text-align:center; }
-.ro-banda { background:#FFF4CC; color:#8D021F; font-size:1.7rem; font-weight:800; padding:18px 16px; }
+.ro-card { background:#ffffff; border:1.5px solid #ECECEC; border-radius:18px; overflow:hidden;
+           box-shadow:0 12px 28px rgba(141,2,31,0.10); margin-bottom:14px; text-align:center; }
+.ro-banda { background:linear-gradient(135deg,#8D021F 0%,#5E0015 100%); color:#ffffff; font-size:1.8rem; font-weight:800; padding:20px 18px 22px 18px; line-height:1.25; }
+.ro-banda-k, .ro-it-k { color:#F3E32A; font-size:0.68rem; font-weight:700; letter-spacing:1.6px; margin-bottom:4px; }
+.ro-it-k { color:#8D021F; margin-top:4px; }
+.ro-tag { display:inline-block; background:#FFF8D6; color:#5E0015; border-radius:30px; padding:4px 12px; font-size:0.75rem; font-weight:600; margin:8px 4px 0 4px; }
+.ro-lezione { background:#ffffff; border:1.5px solid #ECECEC; border-radius:18px; padding:20px 24px; margin-bottom:16px; box-shadow:0 8px 20px rgba(141,2,31,0.06); }
+.ro-lezione-doc { background:#FFF8D6; border-left:4px solid #F3E32A; border-radius:10px; padding:12px 16px; color:#5E0015; font-size:0.92rem; margin-bottom:16px; }
+.ro-lezione-k { color:#8D021F; font-weight:700; font-size:0.72rem; letter-spacing:1.5px; margin-bottom:10px; }
+.ro-passi { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; }
+.ro-passo { display:flex; gap:10px; align-items:flex-start; background:#FCFAF5; border-radius:12px; padding:10px 12px; color:#1F2326; font-size:0.85rem; line-height:1.35; }
+.ro-passo-n { flex:0 0 26px; height:26px; border-radius:50%; background:linear-gradient(135deg,#8D021F,#5E0015); color:#F3E32A; font-weight:800; font-size:0.8rem; display:flex; align-items:center; justify-content:center; }
+/* pulsanti delle tappe interne: pillole come sul sito */
+.st-key-ro_contenuto div[data-testid="stButton"] > button, .st-key-ro_contenuto div[data-testid="stPopover"] button,
+.st-key-ro_contenuto div[data-testid="stFormSubmitButton"] > button {
+    border-radius:30px !important; font-weight:600 !important; min-height:42px !important; }
+.st-key-ro_contenuto div[data-testid="stButton"] > button[kind="secondary"], .st-key-ro_contenuto div[data-testid="stPopover"] button {
+    background:#ffffff !important; color:#1F2326 !important; border:1.5px solid #1F2326 !important; }
+.st-key-ro_contenuto div[data-testid="stButton"] > button[kind="secondary"] p { color:#1F2326 !important; }
+.st-key-ro_contenuto div[data-testid="stButton"] > button[kind="secondary"]:hover { background:#F3E32A !important; border-color:#F3E32A !important; }
+.st-key-ro_contenuto div[data-testid="stButton"] > button[kind="primary"], .st-key-ro_contenuto div[data-testid="stFormSubmitButton"] > button {
+    background:linear-gradient(135deg,#8D021F 0%,#5E0015 100%) !important; color:#ffffff !important; border:none !important; }
+.st-key-ro_contenuto div[data-testid="stButton"] > button[kind="primary"] p, .st-key-ro_contenuto div[data-testid="stFormSubmitButton"] > button p { color:#ffffff !important; }
+/* elenco schede a sinistra */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(> div > .st-key-ro_lista), div[data-testid="stVerticalBlockBorderWrapper"]:has(> .st-key-ro_lista) {
+    border:none !important; box-shadow:none !important; background:transparent !important; padding:0 !important; }
+.st-key-ro_lista div[data-testid="stButton"] > button { justify-content:flex-start !important; text-align:left !important; border-radius:12px !important; min-height:38px !important; }
+.st-key-ro_lista div[data-testid="stButton"] > button p { text-align:left !important; font-size:0.85rem !important; }
+.st-key-ro_contenuto div[data-testid="stForm"] { background:#ffffff; border:1.5px solid #ECECEC !important; border-radius:18px; padding:18px 22px; }
 .ro-emoji { font-size:6rem; line-height:1.2; padding:22px 0 6px 0; }
 .ro-pron { color:#8D021F; font-size:1.05rem; font-weight:600; min-height:1.6rem; }
 .ro-it { color:#626262; font-size:1.2rem; padding:6px 16px 4px 16px; }
@@ -556,7 +582,18 @@ def render_benvenuto(compatto=False):
 
 def render_video(modulo, rs):
     ordine = modulo["ordine"]
-    st.markdown(corso_rumeno.lezione(modulo))
+    v1, v2 = modulo["voci"]
+    passi = ["Guarda la video lezione", "Scorri le schede: leggi l'italiano, ascolta il rumeno e ripeti due volte",
+             f"Riascolta la traccia completa del madrelingua (voci {v1}–{v2})", "Fai gli esercizi «Abbina» e «Ascolta»",
+             "Supera il quiz finale con almeno l'80% (4 su 5): puoi ripeterlo quando vuoi"]
+    passi_html = "".join(f"<div class='ro-passo'><span class='ro-passo-n'>{i}</span><span>{html.escape(t)}</span></div>" for i, t in enumerate(passi, 1))
+    st.markdown(f"""
+    <div class="ro-lezione">
+        <div class="ro-lezione-doc">🎙️ <i>{html.escape(corso_rumeno.TESTO_DOCENTE)}</i></div>
+        <div class="ro-lezione-k">COME SI STUDIA QUESTO MODULO</div>
+        <div class="ro-passi">{passi_html}</div>
+    </div>
+    """, unsafe_allow_html=True)
     video = corso_rumeno.video_modulo(modulo)
     visti = rs.setdefault("video_visti", set())
     for n, (nome, sorgente) in enumerate(video):
@@ -600,7 +637,7 @@ def render_impara(modulo, rs):
     col_lista, col_scheda = st.columns([1.15, 2], gap="medium")
     with col_lista:
         st.caption(f"📚 {len(visti)}/{len(schede)} schede viste · ⭐ = frase chiave del quiz")
-        with st.container(height=560, border=False):
+        with st.container(height=560, border=False, key="ro_lista"):
             for i, s in enumerate(schede):
                 segno = "✅" if i in visti else ("⭐" if s["tipo"].startswith("⭐") else "▫️")
                 if st.button(f"{segno} {s['it']}", key=f"ro_s_{ordine}_{i}", type="primary" if i == idx else "secondary", use_container_width=True):
@@ -612,11 +649,12 @@ def render_impara(modulo, rs):
         voce = "🎙️ registrazione madrelingua" if s["audio"] else "🤖 voce sintetica"
         st.markdown(f"""
         <div class="ro-card">
-            <div class="ro-banda">{html.escape(s['ro'])}</div>
+            <div class="ro-banda"><div class="ro-banda-k">RUMENO</div>{html.escape(s['ro'])}</div>
             <div class="ro-emoji">{s['emoji']}</div>
-            <div class="ro-pron">{voce}</div>
+            <div class="ro-it-k">ITALIANO</div>
             <div class="ro-it">{html.escape(s['it'])}</div>
-            <div class="ro-tipo">{html.escape(s['tipo'])} · {idx + 1} di {len(schede)}</div>
+            <div><span class="ro-tag">{html.escape(s['tipo'])}</span><span class="ro-tag">{voce}</span><span class="ro-tag">{idx + 1} di {len(schede)}</span></div>
+            <div style="height:14px"></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -786,7 +824,7 @@ def render_corso_rumeno(is_admin=False):
         st.markdown(f"""
         <div class="ro-nav-hero">
             <div class="ro-nav-hero-kicker">CORSO ONLINE</div>
-            <div class="ro-nav-hero-tit">🇷🇴 Lingua Rumena</div>
+            <div class="ro-nav-hero-tit">Lingua Rumena</div>
             <div class="ro-nav-hero-sub">{len(moduli)} moduli · {corso_rumeno.ORE_CORSO} ore · attestato finale</div>
             <div class="ro-barra"><div style="width:{perc}%;"></div></div>
             <div class="ro-nav-hero-sub">{len(completati)}/{len(moduli)} completati · {perc}%</div>
@@ -846,28 +884,30 @@ def render_corso_rumeno(is_admin=False):
         with st.container(key="ro_tappe"):
             render_percorso(ordine, rs, is_admin)
 
+        contenuto = st.container(key="ro_contenuto")
         tappa = rs["tappa"].get(ordine, T_VIDEO)
         while tappa > 0 and not tappa_aperta(ordine, tappa, rs, is_admin):
             tappa -= 1
         rs["tappa"][ordine] = tappa
-        if tappa == T_VIDEO:
-            render_video(modulo, rs)
-        elif tappa == T_IMPARA:
-            render_impara(modulo, rs)
-        elif tappa == T_ABBINA:
-            render_esercizio(modulo, rs, "abbina")
-        elif tappa == T_ASCOLTA:
-            render_esercizio(modulo, rs, "ascolta")
-        else:
-            render_quiz(modulo, f"ro_{ordine}")
-            if modulo["titolo"] in st.session_state.moduli_completati:
-                rs["fatte"].setdefault(ordine, set()).add(T_QUIZ)
-                successivo = next((m for m in moduli if m["ordine"] == ordine + 1), None)
-                if successivo and st.button(f"➡️ Passa al modulo {successivo['ordine']}: {_titolo_breve(successivo)}",
-                                            key=f"ro_next_mod_{ordine}", type="primary", use_container_width=True):
-                    rs["modulo"] = successivo["ordine"]
-                    rs["tappa"][successivo["ordine"]] = T_VIDEO
-                    st.rerun()
+        with contenuto:
+            if tappa == T_VIDEO:
+                render_video(modulo, rs)
+            elif tappa == T_IMPARA:
+                render_impara(modulo, rs)
+            elif tappa == T_ABBINA:
+                render_esercizio(modulo, rs, "abbina")
+            elif tappa == T_ASCOLTA:
+                render_esercizio(modulo, rs, "ascolta")
+            else:
+                render_quiz(modulo, f"ro_{ordine}")
+                if modulo["titolo"] in st.session_state.moduli_completati:
+                    rs["fatte"].setdefault(ordine, set()).add(T_QUIZ)
+                    successivo = next((m for m in moduli if m["ordine"] == ordine + 1), None)
+                    if successivo and st.button(f"➡️ Passa al modulo {successivo['ordine']}: {_titolo_breve(successivo)}",
+                                                key=f"ro_next_mod_{ordine}", type="primary", use_container_width=True):
+                        rs["modulo"] = successivo["ordine"]
+                        rs["tappa"][successivo["ordine"]] = T_VIDEO
+                        st.rerun()
 
 
 # 3d. AREA ATTESTATI
@@ -910,7 +950,7 @@ def render_area_attestati(dati, is_admin=False):
     completo = len(fatti) == len(moduli)
     st.markdown(f"""
     <div class="att-card">
-        <p class="att-titolo">🇷🇴 {html.escape(corso_rumeno.NOME_CORSO)}</p>
+        <p class="att-titolo">{html.escape(corso_rumeno.NOME_CORSO)}</p>
         <p style="color:#626262; margin:0;">{len(moduli)} moduli · {corso_rumeno.ORE_CORSO} ore · quiz superati: <b>{len(fatti)}/{len(moduli)}</b></p>
     </div>
     """, unsafe_allow_html=True)
