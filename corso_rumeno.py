@@ -37,6 +37,25 @@ TESTO_DOCENTE = ("Benvenuti. In questa lezione impareremo le parole più utili p
 
 VIDEO_INTRO = "INTRO_Rumeno_Infermieri copia.mp4"
 
+# Video gia' dentro il progetto (si vedono senza link esterno)
+VIDEO_LOCALI = {
+    VIDEO_INTRO: os.path.join(CARTELLA, "media", "rumeno", "video", "intro.mp4"),
+}
+
+# Contenuti del video di benvenuto (docente virtuale)
+BENVENUTO = {
+    "titolo": "Bun venit! Rumeno per Scienze Infermieristiche",
+    "sottotitolo": "Il tuo percorso in Romania inizia da qui",
+    "obiettivo": "Comunicare fin da subito, senza imparare regole a memoria.",
+    "passi": [
+        ("Leggi", "il significato della frase in italiano", "«Come si sente?»"),
+        ("Ascolta e ripeti", "la pronuncia autentica, ad alta voce, due volte", "«Cum vă simțiți?»"),
+        ("Mettiti alla prova", "riconosci la frase solo a orecchio, senza guardare il testo", "🎧"),
+    ],
+    "motto": "Niente stress per gli errori: ascolta, ripeti, divertiti!",
+    "chiusura": "Mult succes! Buona fortuna, futuri infermieri.",
+}
+
 # Nome file video -> link pubblico (da compilare)
 VIDEO_LINK = {
     "INTRO_Rumeno_Infermieri copia.mp4": "",
@@ -1291,9 +1310,17 @@ def link_video(modulo):
     return ""
 
 
+def sorgente_video(nome):
+    """Link pubblico se c'e', altrimenti il file nel progetto, altrimenti ""."""
+    if VIDEO_LINK.get(nome):
+        return VIDEO_LINK[nome]
+    percorso = VIDEO_LOCALI.get(nome)
+    return percorso if percorso and os.path.exists(percorso) else ""
+
+
 def video_modulo(modulo):
     """Lista di (nome_file, link) dei video del modulo."""
-    return [(nome, VIDEO_LINK.get(nome, "")) for nome in modulo.get("video", [])]
+    return [(nome, sorgente_video(nome)) for nome in modulo.get("video", [])]
 
 
 def file_voce(numero):

@@ -446,12 +446,27 @@ def _mostra_video(nome, link):
         st.markdown(f"<div class='ro-video-vuoto'>🎬 Video lezione in arrivo<br><span style='font-weight:400; font-size:0.85rem; color:#626262;'>{html.escape(nome)}</span></div>",
                     unsafe_allow_html=True)
 
+def render_benvenuto(compatto=False):
+    """Video di benvenuto del docente + il metodo in 3 passi."""
+    b = corso_rumeno.BENVENUTO
+    if not compatto:
+        st.markdown(f"<p class='ro-titolo'>🇷🇴 {html.escape(b['titolo'])}</p><p class='ro-sotto'>{html.escape(b['sottotitolo'])}</p>",
+                    unsafe_allow_html=True)
+    _mostra_video(corso_rumeno.VIDEO_INTRO, corso_rumeno.sorgente_video(corso_rumeno.VIDEO_INTRO))
+    st.markdown(f"**🎯 Obiettivo:** {b['obiettivo']}")
+    colonne = st.columns(len(b["passi"]))
+    for i, (col, (nome, testo, esempio)) in enumerate(zip(colonne, b["passi"]), start=1):
+        col.markdown(f"<div class='ro-card' style='padding:14px; text-align:left;'><div style='color:#8D021F; font-weight:800;'>{i}. {html.escape(nome)}</div>"
+                     f"<div style='color:#626262; font-size:0.9rem;'>{html.escape(testo)}</div>"
+                     f"<div style='color:#8D021F; font-size:0.9rem; margin-top:6px;'>{html.escape(esempio)}</div></div>", unsafe_allow_html=True)
+    st.caption(f"{b['motto']} {b['chiusura']}")
+
 def render_video(modulo, rs):
     ordine = modulo["ordine"]
     st.markdown(corso_rumeno.lezione(modulo))
     if ordine == 1:
         with st.expander("👋 Presentazione del corso", expanded=True):
-            _mostra_video(corso_rumeno.VIDEO_INTRO, corso_rumeno.VIDEO_LINK.get(corso_rumeno.VIDEO_INTRO, ""))
+            render_benvenuto(compatto=True)
     for nome, link in corso_rumeno.video_modulo(modulo):
         _mostra_video(nome, link)
     tracce = corso_rumeno.tracce_modulo(modulo)
@@ -654,6 +669,9 @@ def render_corso_rumeno(is_admin=False):
         st.markdown("<div class='ro-nav-titolo'>🇷🇴 Corso Online di Rumeno</div>", unsafe_allow_html=True)
         st.progress(len(completati) / len(moduli))
         st.caption(f"{len(completati)} moduli su {len(moduli)} completati · {corso_rumeno.ORE_CORSO} ore")
+        if st.button("🎬 Benvenuto e metodo", key="ro_benvenuto", type="primary" if rs.get("benvenuto", True) else "secondary", use_container_width=True):
+            rs["benvenuto"] = True
+            st.rerun()
         st.markdown(f"<div class='ro-materia'>{html.escape(corso_rumeno.MATERIA_BASE)} · 15 moduli</div>", unsafe_allow_html=True)
         for m in moduli:
             aperto = modulo_sbloccato(m, moduli, is_admin)
@@ -661,6 +679,7 @@ def render_corso_rumeno(is_admin=False):
             if st.button(f"{icona} {m['ordine']}. {_titolo_breve(m)}", key=f"ro_mod_{m['ordine']}", disabled=not aperto,
                          type="primary" if m["ordine"] == rs["modulo"] else "secondary", use_container_width=True):
                 rs["modulo"] = m["ordine"]
+                rs["benvenuto"] = False
                 st.rerun()
         if len(completati) == len(moduli):
             st.success("🎓 Corso completato!")
@@ -669,6 +688,13 @@ def render_corso_rumeno(is_admin=False):
                 st.rerun()
 
     with col_main:
+        if rs.get("benvenuto", not st.session_state.moduli_completati):
+            render_benvenuto()
+            if st.button("▶️ Inizia dal Modulo 1", key="ro_inizia", type="primary", use_container_width=True):
+                rs["benvenuto"] = False
+                rs["modulo"] = 1
+                st.rerun()
+            return
         modulo = next((m for m in moduli if m["ordine"] == rs["modulo"]), moduli[0])
         if not modulo_sbloccato(modulo, moduli, is_admin):
             modulo = moduli[0]
