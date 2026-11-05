@@ -911,17 +911,29 @@ def render_corso_rumeno(is_admin=False):
     components.html("""<script>
     (function () {
       const w = window.parent, d = w.document;
-      if (w.__lsSegui) return;
-      w.__lsSegui = setInterval(function () {
+      if (w.__lsSegui2) return;
+      w.__lsSegui2 = true;
+      const ALTO = 85, BASSO = 60;   // spazio per l'intestazione fissa e per la barra in basso
+      function aggiorna() {
         const el = d.querySelector(".st-key-ro_main");
         if (!el) return;
         const col = el.closest('[data-testid="stColumn"], [data-testid="column"]');
-        if (!col) return;
-        const alto = 80, basso = 60;
-        col.style.position = "sticky";
-        col.style.alignSelf = "flex-start";
-        col.style.top = Math.min(alto, w.innerHeight - col.offsetHeight - basso) + "px";
-      }, 400);
+        const riga = col && col.closest('[data-testid="stHorizontalBlock"]');
+        if (!col || !riga) return;
+        col.style.position = "relative"; col.style.top = "0px"; col.style.alignSelf = "flex-start";
+        col.style.willChange = "transform"; col.style.transition = "transform 0.08s linear";
+        const vh = w.innerHeight, rr = riga.getBoundingClientRect();
+        const hCol = col.offsetHeight, hRiga = riga.offsetHeight;
+        // dove vorrei la lezione sullo schermo: in alto, oppure col fondo in basso se e' piu' alta dello schermo
+        const cima = (hCol <= vh - ALTO - BASSO) ? ALTO : Math.min(ALTO, vh - BASSO - hCol);
+        let spost = cima - rr.top;
+        spost = Math.max(0, Math.min(spost, hRiga - hCol));
+        col.style.transform = "translateY(" + Math.round(spost) + "px)";
+      }
+      d.addEventListener("scroll", aggiorna, true);
+      w.addEventListener("scroll", aggiorna, true);
+      w.addEventListener("resize", aggiorna);
+      setInterval(aggiorna, 300);
     })();
     </script>""", height=0)
 
@@ -1374,6 +1386,9 @@ def dialog_login():
     if accedi:
         if email and password:
             if verifica_credenziali(email, password, ricordami):
+                st.session_state.ricordami = bool(ricordami)
+                if not ricordami:
+                    st.session_state.cancella_cookie_dopo = True
                 carica_progressi()
                 st.session_state.autenticato = True
                 st.session_state.sezione_attiva = "Corsi"
@@ -1457,6 +1472,58 @@ def dialog_recupero():
         st.session_state.open_recupero = False
         st.session_state.open_login = True
         st.rerun()
+
+# RICORDAMI: cookie cifrato (30 giorni) con le credenziali, letto all'apertura della pagina
+NOME_COOKIE = "ls_ricordami"
+GIORNI_RICORDAMI = 30
+
+def _cifratore():
+    from cryptography.fernet import Fernet
+    import hashlib
+    chiave = base64.urlsafe_b64encode(hashlib.sha256(("leonardo-ricordami|" + APPS_SCRIPT_TOKEN).encode("utf-8")).digest())
+    return Fernet(chiave)
+
+def crea_token_ricordami(email, password):
+    try:
+        return _cifratore().encrypt(json.dumps({"e": email, "p": password}).encode("utf-8")).decode("ascii")
+    except Exception:
+        return ""
+
+def leggi_token_ricordami(token):
+    try:
+        dati = json.loads(_cifratore().decrypt(token.encode("ascii"), ttl=GIORNI_RICORDAMI * 86400).decode("utf-8"))
+        return dati.get("e", ""), dati.get("p", "")
+    except Exception:
+        return "", ""
+
+def _cookie_attuale():
+    try:
+        return st.context.cookies.get(NOME_COOKIE, "")
+    except Exception:
+        return ""
+
+def scrivi_cookie(valore, giorni=GIORNI_RICORDAMI):
+    """Scrive (o cancella, con giorni=0) il cookie nel browser dello studente."""
+    durata = giorni * 86400 if valore else 0
+    components.html(f"""<script>
+      try {{ window.parent.document.cookie = "{NOME_COOKIE}=" + {json.dumps(valore)} + "; path=/; max-age={durata}; SameSite=Lax; Secure"; }} catch (e) {{}}
+    </script>""", height=0)
+
+# Accesso automatico con il cookie (una sola volta per sessione, mai dopo un "Esci")
+if not st.session_state.autenticato and not st.session_state.get("ricordami_provato"):
+    st.session_state.ricordami_provato = True
+    _email_c, _pw_c = leggi_token_ricordami(_cookie_attuale()) if _cookie_attuale() else ("", "")
+    if _email_c and _pw_c:
+        if verifica_credenziali(_email_c, _pw_c, True):
+            st.session_state.ricordami = True
+            carica_progressi()
+            st.session_state.autenticato = True
+            st.session_state.sezione_attiva = "Corsi"
+        else:
+            st.session_state.cancella_cookie = True
+
+if not st.session_state.autenticato and st.session_state.pop("cancella_cookie", False):
+    scrivi_cookie("", 0)
 
 if not st.session_state.autenticato:
     if st.session_state.open_login:
@@ -1688,6 +1755,15 @@ else:
 
     dati = st.session_state.dati_utente
     is_admin = (dati.get('email').strip().lower() == EMAIL_ADMIN.strip().lower())
+
+    # Ricordami: tiene il cookie allineato all'ultima password (anche dopo un cambio password)
+    if st.session_state.get("ricordami"):
+        _e, _p = leggi_token_ricordami(_cookie_attuale()) if _cookie_attuale() else ("", "")
+        if (_e, _p) != (dati.get("email"), dati.get("password")) and st.session_state.get("cookie_scritto_per") != dati.get("password"):
+            scrivi_cookie(crea_token_ricordami(dati.get("email", ""), dati.get("password", "")))
+            st.session_state.cookie_scritto_per = dati.get("password")
+    elif st.session_state.pop("cancella_cookie_dopo", False):
+        scrivi_cookie("", 0)
     df_catalogo_base = carica_catalogo_corsi()
 
     # Header
@@ -1728,6 +1804,9 @@ else:
                 if st.button("🚪 Esci", key="pa_esci", type="tertiary"):
                     st.session_state.autenticato = False
                     st.session_state.dati_utente = {}
+                    st.session_state.ricordami = False
+                    st.session_state.ricordami_provato = True
+                    st.session_state.cancella_cookie = True
                     st.rerun()
         st.stop()
 
@@ -1811,6 +1890,9 @@ else:
                 if st.button("🚪 Esci", key="sb_btn_logout", use_container_width=True):
                     st.session_state.autenticato = False
                     st.session_state.dati_utente = {}
+                    st.session_state.ricordami = False
+                    st.session_state.ricordami_provato = True
+                    st.session_state.cancella_cookie = True
                     st.session_state.sezione_attiva = "Corsi"
                     st.session_state.materia_attiva_card = None
                     st.rerun()
