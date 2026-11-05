@@ -1496,34 +1496,39 @@ def leggi_token_ricordami(token):
     except Exception:
         return "", ""
 
-def _cookie_attuale():
-    try:
-        return st.context.cookies.get(NOME_COOKIE, "")
-    except Exception:
+try:
+    _memoria_browser = components.declare_component(
+        "ricordami", path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "componenti", "ricordami"))
+except Exception:
+    _memoria_browser = None
+
+def memoria_browser(azione="leggi", valore=""):
+    """Legge/scrive il token del Ricordami nel browser. Restituisce il token o None se non ancora pronto."""
+    if _memoria_browser is None:
         return ""
+    risposta = _memoria_browser(azione=azione, valore=valore, key=f"ricordami_{azione}", default=None)
+    if isinstance(risposta, dict) and risposta.get("azione") == azione:
+        return risposta.get("token", "")
+    return None
 
-def scrivi_cookie(valore, giorni=GIORNI_RICORDAMI):
-    """Scrive (o cancella, con giorni=0) il cookie nel browser dello studente."""
-    durata = giorni * 86400 if valore else 0
-    components.html(f"""<script>
-      try {{ window.parent.document.cookie = "{NOME_COOKIE}=" + {json.dumps(valore)} + "; path=/; max-age={durata}; SameSite=Lax; Secure"; }} catch (e) {{}}
-    </script>""", height=0)
-
-# Accesso automatico con il cookie (una sola volta per sessione, mai dopo un "Esci")
-if not st.session_state.autenticato and not st.session_state.get("ricordami_provato"):
-    st.session_state.ricordami_provato = True
-    _email_c, _pw_c = leggi_token_ricordami(_cookie_attuale()) if _cookie_attuale() else ("", "")
-    if _email_c and _pw_c:
-        if verifica_credenziali(_email_c, _pw_c, True):
-            st.session_state.ricordami = True
-            carica_progressi()
-            st.session_state.autenticato = True
-            st.session_state.sezione_attiva = "Corsi"
-        else:
-            st.session_state.cancella_cookie = True
-
+# Accesso automatico con il Ricordami (una sola volta per sessione, mai dopo un "Esci")
 if not st.session_state.autenticato and st.session_state.pop("cancella_cookie", False):
-    scrivi_cookie("", 0)
+    memoria_browser("cancella")
+    st.session_state.ricordami_provato = True
+elif not st.session_state.autenticato and not st.session_state.get("ricordami_provato"):
+    _token = memoria_browser("leggi")
+    if _token is not None:                  # il browser ha risposto
+        st.session_state.ricordami_provato = True
+        _email_c, _pw_c = leggi_token_ricordami(_token) if _token else ("", "")
+        if _email_c and _pw_c:
+            if verifica_credenziali(_email_c, _pw_c, True):
+                st.session_state.ricordami = True
+                carica_progressi()
+                st.session_state.autenticato = True
+                st.session_state.sezione_attiva = "Corsi"
+                st.rerun()
+            else:
+                memoria_browser("cancella")
 
 if not st.session_state.autenticato:
     if st.session_state.open_login:
@@ -1758,12 +1763,13 @@ else:
 
     # Ricordami: tiene il cookie allineato all'ultima password (anche dopo un cambio password)
     if st.session_state.get("ricordami"):
-        _e, _p = leggi_token_ricordami(_cookie_attuale()) if _cookie_attuale() else ("", "")
-        if (_e, _p) != (dati.get("email"), dati.get("password")) and st.session_state.get("cookie_scritto_per") != dati.get("password"):
-            scrivi_cookie(crea_token_ricordami(dati.get("email", ""), dati.get("password", "")))
-            st.session_state.cookie_scritto_per = dati.get("password")
+        # reso a ogni pagina (invisibile): cosi' la scrittura avviene di sicuro anche se la pagina si ricarica subito
+        if st.session_state.get("token_ricordami_per") != dati.get("password"):
+            st.session_state.token_ricordami = crea_token_ricordami(dati.get("email", ""), dati.get("password", ""))
+            st.session_state.token_ricordami_per = dati.get("password")
+        memoria_browser("scrivi", st.session_state.token_ricordami)
     elif st.session_state.pop("cancella_cookie_dopo", False):
-        scrivi_cookie("", 0)
+        memoria_browser("cancella")
     df_catalogo_base = carica_catalogo_corsi()
 
     # Header
