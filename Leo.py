@@ -464,13 +464,7 @@ div[class*="st-key-ro_voce_"] div[data-testid="stButton"] > button p { color:inh
 div[class*="st-key-ro_voce_"] div[data-testid="stButton"] > button:hover { background:#F3E32A !important; border-color:#F3E32A !important; color:#8D021F !important; }
 div[class*="st-key-ro_voce_"] div[data-testid="stButton"] > button:disabled { opacity:0.5 !important; }
 .st-key-ro_tappe div[data-testid="stButton"] > button { border-radius:30px !important; font-weight:600 !important; }
-/* menu del corso che segue lo scroll (sotto l'intestazione fissa, sopra la barra in basso) */
-div[data-testid="stColumn"]:has(.st-key-ro_nav), div[data-testid="column"]:has(.st-key-ro_nav) {
-    position:sticky !important; top:80px; align-self:flex-start !important; max-height:calc(100vh - 140px);
-    overflow-y:auto; overflow-x:hidden; padding-right:6px; scrollbar-width:thin; scrollbar-color:#D4AF37 transparent; }
-div[data-testid="stColumn"]:has(.st-key-ro_nav)::-webkit-scrollbar { width:6px; }
-div[data-testid="stColumn"]:has(.st-key-ro_nav)::-webkit-scrollbar-thumb { background:#D4AF37; border-radius:6px; }
-div[data-testid="stHorizontalBlock"]:has(.st-key-ro_nav) { align-items:flex-start !important; overflow:visible !important; }
+div[data-testid="stHorizontalBlock"]:has(.st-key-ro_main) { align-items:flex-start !important; overflow:visible !important; }
 .ro-oro { background:linear-gradient(135deg,#F3E32A 0%,#F5A623 100%); color:#5E0015; border-radius:14px; padding:14px 16px; margin:8px 0; }
 .ro-benvenuto { background:linear-gradient(135deg,#8D021F 0%,#5E0015 100%); border-radius:20px; padding:34px 30px; text-align:center;
     color:#fff; margin-bottom:16px; box-shadow:0 12px 28px rgba(141,2,31,0.22); }
@@ -874,7 +868,7 @@ def render_corso_rumeno(is_admin=False):
                 f".st-key-ro_voce_{attivo} .ro-voce-num {{ color:#F3E32A !important; }}"
                 f".st-key-ro_voce_{attivo} .ro-voce-tit, .st-key-ro_voce_{attivo} .ro-voce-desc {{ color:#ffffff !important; }}</style>",
                 unsafe_allow_html=True)
-    with col_nav, st.container(key="ro_nav"):
+    with col_nav:
         perc = int(len(completati) / len(moduli) * 100)
         st.markdown(f"""
         <div class="ro-nav-hero">
@@ -912,7 +906,26 @@ def render_corso_rumeno(is_admin=False):
                 st.session_state.sezione_attiva = "Attestati"
                 st.rerun()
 
-    with col_main:
+    # La lezione a destra segue lo scroll della pagina: resta in vista mentre si scorre il menu.
+    # Se e' piu' alta dello schermo si ferma quando il suo fondo arriva in basso (si vede sempre tutta).
+    components.html("""<script>
+    (function () {
+      const w = window.parent, d = w.document;
+      if (w.__lsSegui) return;
+      w.__lsSegui = setInterval(function () {
+        const el = d.querySelector(".st-key-ro_main");
+        if (!el) return;
+        const col = el.closest('[data-testid="stColumn"], [data-testid="column"]');
+        if (!col) return;
+        const alto = 80, basso = 60;
+        col.style.position = "sticky";
+        col.style.alignSelf = "flex-start";
+        col.style.top = Math.min(alto, w.innerHeight - col.offsetHeight - basso) + "px";
+      }, 400);
+    })();
+    </script>""", height=0)
+
+    with col_main, st.container(key="ro_main"):
         if in_benvenuto:
             render_benvenuto()
             if st.button("▶️ Inizia dal Modulo 1", key="ro_inizia", type="primary", use_container_width=True):
