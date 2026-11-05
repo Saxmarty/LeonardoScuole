@@ -376,6 +376,40 @@ STILI_CORSO_RO = """
                   text-align:center; color:#8D021F; font-weight:600; }
 .att-card { background:#ffffff; border:2px solid #D4AF37; border-left:6px solid #8D021F; border-radius:14px; padding:20px 24px; margin-bottom:14px; }
 .att-titolo { color:#8D021F; font-weight:800; font-size:1.25rem; margin:0 0 4px 0; }
+/* STILE SITO leonardoscuole.it: riquadri bordeaux sfumati, pulsanti bianchi a pillola, accenti giallo-oro */
+.ro-nav-hero, .ro-hero { background:linear-gradient(135deg,#8D021F 0%,#5E0015 100%); border-radius:18px; padding:18px 20px; color:#fff;
+    box-shadow:0 12px 28px rgba(141,2,31,0.22); margin-bottom:14px; }
+.ro-hero { padding:24px 28px; }
+.ro-nav-hero-kicker, .ro-hero-kicker { color:#F3E32A; font-weight:700; font-size:0.72rem; letter-spacing:1.5px; }
+.ro-nav-hero-tit { font-weight:800; font-size:1.35rem; color:#fff; margin:2px 0; }
+.ro-hero-tit { font-weight:800; font-size:2rem; color:#fff; line-height:1.2; margin:4px 0 6px 0; }
+.ro-nav-hero-sub, .ro-hero-sub { color:rgba(255,255,255,0.88); font-size:0.88rem; margin-bottom:8px; }
+.ro-hero-sub { font-size:1.02rem; margin-bottom:12px; }
+.ro-barra { background:rgba(255,255,255,0.18); border-radius:20px; height:8px; overflow:hidden; margin:8px 0 6px 0; }
+.ro-barra > div { background:linear-gradient(90deg,#F3E32A,#F5A623); height:100%; border-radius:20px; }
+.ro-pill { display:inline-block; background:rgba(255,255,255,0.14); color:#fff; border-radius:30px; padding:5px 12px;
+    font-size:0.8rem; font-weight:500; margin:0 6px 6px 0; }
+div[class*="st-key-ro_voce_"] { background:#ffffff; border:1.5px solid #ECECEC; border-radius:14px; padding:12px 14px 10px 14px;
+    margin-bottom:10px; transition:transform .15s ease, box-shadow .15s ease; gap:0.3rem !important; }
+div[class*="st-key-ro_voce_"]:hover { transform:translateY(-2px); box-shadow:0 8px 18px rgba(141,2,31,0.12); }
+.ro-voce-num { color:#8D021F; font-weight:700; font-size:0.7rem; letter-spacing:1.3px; }
+.ro-voce-stato { float:right; letter-spacing:0; font-weight:600; color:#2e7d32; }
+.ro-voce-tit { color:#1F2326; font-weight:700; font-size:0.98rem; line-height:1.3; margin-top:2px; }
+.ro-voce-desc { color:#626262; font-size:0.8rem; line-height:1.35; margin-top:2px; }
+.ro-voce-off { opacity:0.55; }
+div[class*="st-key-ro_voce_"] div[data-testid="stButton"] > button {
+    background:#ffffff !important; color:#1F2326 !important; border:1.5px solid #1F2326 !important; border-radius:30px !important;
+    padding:2px 16px !important; min-height:30px !important; font-weight:600 !important; box-shadow:none !important; }
+div[class*="st-key-ro_voce_"] div[data-testid="stButton"] > button p { color:inherit !important; font-size:0.8rem !important; }
+div[class*="st-key-ro_voce_"] div[data-testid="stButton"] > button:hover { background:#F3E32A !important; border-color:#F3E32A !important; color:#8D021F !important; }
+div[class*="st-key-ro_voce_"] div[data-testid="stButton"] > button:disabled { opacity:0.5 !important; }
+.st-key-ro_tappe div[data-testid="stButton"] > button { border-radius:30px !important; font-weight:600 !important; }
+.ro-oro { background:linear-gradient(135deg,#F3E32A 0%,#F5A623 100%); color:#5E0015; border-radius:14px; padding:14px 16px; margin:8px 0; }
+.ro-benvenuto { background:linear-gradient(135deg,#8D021F 0%,#5E0015 100%); border-radius:20px; padding:34px 30px; text-align:center;
+    color:#fff; margin-bottom:16px; box-shadow:0 12px 28px rgba(141,2,31,0.22); }
+.ro-benvenuto-tit { color:#F3E32A; font-weight:900; font-size:3rem; letter-spacing:1px; line-height:1.1; }
+.ro-benvenuto-sub { color:#fff; font-weight:700; font-size:1.25rem; margin-top:6px; }
+.ro-benvenuto-small { color:rgba(255,255,255,0.85); font-size:0.95rem; margin-top:4px; }
 </style>
 """
 
@@ -450,8 +484,10 @@ def render_benvenuto(compatto=False):
     """Video di benvenuto del docente + il metodo in 3 passi."""
     b = corso_rumeno.BENVENUTO
     if not compatto:
-        st.markdown(f"<p class='ro-titolo'>🇷🇴 {html.escape(b['titolo'])}</p><p class='ro-sotto'>{html.escape(b['sottotitolo'])}</p>",
-                    unsafe_allow_html=True)
+        titolo, _, resto = b["titolo"].partition("! ")
+        st.markdown(f"<div class='ro-benvenuto'><div class='ro-benvenuto-tit'>{html.escape(titolo.upper())}!</div>"
+                    f"<div class='ro-benvenuto-sub'>{html.escape(resto)}</div>"
+                    f"<div class='ro-benvenuto-small'>{html.escape(b['sottotitolo'])}</div></div>", unsafe_allow_html=True)
     _mostra_video(corso_rumeno.VIDEO_INTRO, corso_rumeno.sorgente_video(corso_rumeno.VIDEO_INTRO))
     st.markdown(f"**🎯 Obiettivo:** {b['obiettivo']}")
     colonne = st.columns(len(b["passi"]))
@@ -664,31 +700,54 @@ def render_corso_rumeno(is_admin=False):
     moduli = sorted(corso_rumeno.MODULI_RUMENO, key=lambda m: m["ordine"])
     completati = {m["titolo"] for m in moduli if m["titolo"] in st.session_state.moduli_completati}
 
-    col_nav, col_main = st.columns([1, 3.3], gap="large")
+    col_nav, col_main = st.columns([1.25, 3.2], gap="large")
+    in_benvenuto = rs.get("benvenuto", not st.session_state.moduli_completati)
+    attivo = "intro" if in_benvenuto else str(rs["modulo"])
+    # Evidenzia la voce aperta (stile riquadro bordeaux del sito)
+    st.markdown(f"<style>.st-key-ro_voce_{attivo} {{ background:linear-gradient(135deg,#8D021F 0%,#5E0015 100%) !important; border-color:#8D021F !important; }}"
+                f".st-key-ro_voce_{attivo} .ro-voce-num {{ color:#F3E32A !important; }}"
+                f".st-key-ro_voce_{attivo} .ro-voce-tit, .st-key-ro_voce_{attivo} .ro-voce-desc {{ color:#ffffff !important; }}</style>",
+                unsafe_allow_html=True)
     with col_nav:
-        st.markdown("<div class='ro-nav-titolo'>🇷🇴 Corso Online di Rumeno</div>", unsafe_allow_html=True)
-        st.progress(len(completati) / len(moduli))
-        st.caption(f"{len(completati)} moduli su {len(moduli)} completati · {corso_rumeno.ORE_CORSO} ore")
-        if st.button("🎬 Benvenuto e metodo", key="ro_benvenuto", type="primary" if rs.get("benvenuto", True) else "secondary", use_container_width=True):
-            rs["benvenuto"] = True
-            st.rerun()
-        st.markdown(f"<div class='ro-materia'>{html.escape(corso_rumeno.MATERIA_BASE)} · 15 moduli</div>", unsafe_allow_html=True)
+        perc = int(len(completati) / len(moduli) * 100)
+        st.markdown(f"""
+        <div class="ro-nav-hero">
+            <div class="ro-nav-hero-kicker">CORSO ONLINE</div>
+            <div class="ro-nav-hero-tit">🇷🇴 Lingua Rumena</div>
+            <div class="ro-nav-hero-sub">{len(moduli)} moduli · {corso_rumeno.ORE_CORSO} ore · attestato finale</div>
+            <div class="ro-barra"><div style="width:{perc}%;"></div></div>
+            <div class="ro-nav-hero-sub">{len(completati)}/{len(moduli)} completati · {perc}%</div>
+        </div>
+        """, unsafe_allow_html=True)
+        with st.container(key="ro_voce_intro"):
+            st.markdown("<div class='ro-voce-num'>INTRO</div><div class='ro-voce-tit'>🎬 Benvenuto e metodo</div>"
+                        "<div class='ro-voce-desc'>Il video del docente e i 3 passi per studiare.</div>", unsafe_allow_html=True)
+            if st.button("Guarda →", key="ro_benvenuto"):
+                rs["benvenuto"] = True
+                st.rerun()
         for m in moduli:
             aperto = modulo_sbloccato(m, moduli, is_admin)
-            icona = "✅" if m["titolo"] in completati else (corso_rumeno.ICONE_MODULI.get(m["ordine"], "📘") if aperto else "🔒")
-            if st.button(f"{icona} {m['ordine']}. {_titolo_breve(m)}", key=f"ro_mod_{m['ordine']}", disabled=not aperto,
-                         type="primary" if m["ordine"] == rs["modulo"] else "secondary", use_container_width=True):
-                rs["modulo"] = m["ordine"]
-                rs["benvenuto"] = False
-                st.rerun()
+            fatto = m["titolo"] in completati
+            stato = "✅ Completato" if fatto else ("" if aperto else "🔒 Bloccato")
+            icona = corso_rumeno.ICONE_MODULI.get(m["ordine"], "📘")
+            classe = "ro-voce-off" if not aperto else ""
+            with st.container(key=f"ro_voce_{m['ordine']}"):
+                st.markdown(f"<div class='{classe}'><div class='ro-voce-num'>MODULO {m['ordine']} <span class='ro-voce-stato'>{stato}</span></div>"
+                            f"<div class='ro-voce-tit'>{icona} {html.escape(_titolo_breve(m))}</div>"
+                            f"<div class='ro-voce-desc'>{html.escape(m['descrizione'])}</div></div>", unsafe_allow_html=True)
+                etichetta = "Ripassa →" if fatto else ("Apri →" if aperto else "Bloccato")
+                if st.button(etichetta, key=f"ro_mod_{m['ordine']}", disabled=not aperto):
+                    rs["modulo"] = m["ordine"]
+                    rs["benvenuto"] = False
+                    st.rerun()
         if len(completati) == len(moduli):
-            st.success("🎓 Corso completato!")
+            st.markdown("<div class='ro-oro'>🎓 <b>Corso completato!</b><br>Il tuo attestato è pronto.</div>", unsafe_allow_html=True)
             if st.button("🎓 Scarica l'attestato", key="ro_vai_attestati", type="primary", use_container_width=True):
                 st.session_state.sezione_attiva = "Attestati"
                 st.rerun()
 
     with col_main:
-        if rs.get("benvenuto", not st.session_state.moduli_completati):
+        if in_benvenuto:
             render_benvenuto()
             if st.button("▶️ Inizia dal Modulo 1", key="ro_inizia", type="primary", use_container_width=True):
                 rs["benvenuto"] = False
@@ -701,9 +760,17 @@ def render_corso_rumeno(is_admin=False):
             rs["modulo"] = modulo["ordine"]
         ordine = modulo["ordine"]
         icona = corso_rumeno.ICONE_MODULI.get(ordine, "📘")
-        st.markdown(f"<p class='ro-titolo'>{icona} Modulo {ordine} · {html.escape(_titolo_breve(modulo))}</p>"
-                    f"<p class='ro-sotto'>{html.escape(modulo['descrizione'])}</p>", unsafe_allow_html=True)
-        with st.container(border=True):
+        v1, v2 = modulo["voci"]
+        n_schede = len(corso_rumeno.elementi(modulo))
+        st.markdown(f"""
+        <div class="ro-hero">
+            <div class="ro-hero-kicker">MODULO {ordine} DI {len(moduli)}</div>
+            <div class="ro-hero-tit">{icona} {html.escape(_titolo_breve(modulo))}</div>
+            <div class="ro-hero-sub">{html.escape(modulo['descrizione'])}</div>
+            <div><span class="ro-pill">💬 {n_schede} frasi</span><span class="ro-pill">🎙️ audio madrelingua</span><span class="ro-pill">📝 quiz 5 domande · 80%</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+        with st.container(key="ro_tappe"):
             render_percorso(ordine, rs)
 
         tappa = rs["tappa"].get(ordine, T_VIDEO)
