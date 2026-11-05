@@ -37,10 +37,14 @@ TESTO_DOCENTE = ("Benvenuti. In questa lezione impareremo le parole più utili p
 
 VIDEO_INTRO = "INTRO_Rumeno_Infermieri copia.mp4"
 
-# Video gia' dentro il progetto (si vedono senza link esterno)
-VIDEO_LOCALI = {
-    VIDEO_INTRO: os.path.join(CARTELLA, "media", "rumeno", "video", "intro.mp4"),
-}
+# Video dentro il progetto: cartella static/rumeno/video (servita da Streamlit come /app/static/...)
+# Il nome del file e' quello originale senza " copia" e "_nuova_versione" (es. Al_Bar.mp4).
+CARTELLA_VIDEO = os.path.join(CARTELLA, "static", "rumeno", "video")
+URL_VIDEO = "/app/static/rumeno/video/"
+
+
+def nome_file_video(nome):
+    return nome.replace(" copia", "").replace("_nuova_versione", "").replace(" ", "_")
 
 # Contenuti del video di benvenuto (docente virtuale)
 BENVENUTO = {
@@ -1303,7 +1307,7 @@ def righe_catalogo():
 
 
 def link_video(modulo):
-    """Primo link video disponibile del modulo ("" se non ancora caricato)."""
+    """Primo link video esterno del modulo ("" se non c'e')."""
     for nome in modulo.get("video", []):
         if VIDEO_LINK.get(nome):
             return VIDEO_LINK[nome]
@@ -1311,11 +1315,14 @@ def link_video(modulo):
 
 
 def sorgente_video(nome):
-    """Link pubblico se c'e', altrimenti il file nel progetto, altrimenti ""."""
+    """{"tipo": "locale"|"link", "url": ...} oppure None se il video non c'e' ancora.
+    Il file nel progetto ha la precedenza: solo li' si puo' bloccare l'avanzamento veloce."""
+    file = nome_file_video(nome)
+    if os.path.exists(os.path.join(CARTELLA_VIDEO, file)):
+        return {"tipo": "locale", "url": URL_VIDEO + file}
     if VIDEO_LINK.get(nome):
-        return VIDEO_LINK[nome]
-    percorso = VIDEO_LOCALI.get(nome)
-    return percorso if percorso and os.path.exists(percorso) else ""
+        return {"tipo": "link", "url": VIDEO_LINK[nome]}
+    return None
 
 
 def video_modulo(modulo):

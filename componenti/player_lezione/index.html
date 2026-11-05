@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: transparent; font-family: 'Poppins', sans-serif; }
+  .box { position: relative; width: 100%; border-radius: 16px; overflow: hidden; background: #000;
+         box-shadow: 0 12px 28px rgba(141,2,31,0.22); }
+  video { display: block; width: 100%; height: auto; background: #000; }
+  .avviso { position: absolute; top: 14px; left: 14px; background: rgba(0,0,0,0.6); color: #fff; font-size: 12px;
+            padding: 6px 12px; border-radius: 30px; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  .avviso.on { opacity: 1; }
+  /* Riquadro "Prossimo" stile Netflix */
+  .prossimo { position: absolute; right: 22px; bottom: 70px; width: min(360px, 70%); background: rgba(20,20,20,0.88);
+              border: 1px solid rgba(255,255,255,0.18); border-radius: 14px; padding: 16px 18px; color: #fff;
+              transform: translateY(20px); opacity: 0; pointer-events: none; transition: all .35s ease; backdrop-filter: blur(6px); }
+  .prossimo.on { transform: translateY(0); opacity: 1; pointer-events: auto; }
+  .k { color: #F3E32A; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; }
+  .t { font-size: 17px; font-weight: 700; margin: 4px 0 12px 0; line-height: 1.25; }
+  .riga { display: flex; gap: 10px; align-items: center; }
+  .vai { position: relative; overflow: hidden; flex: 1; border: none; border-radius: 30px; background: #fff; color: #111;
+         font: 700 14px 'Poppins', sans-serif; padding: 10px 16px; cursor: pointer; }
+  .vai .riemp { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #F3E32A; z-index: 0; }
+  .vai span { position: relative; z-index: 1; }
+  .rivedi { border: 1px solid rgba(255,255,255,0.5); background: transparent; color: #fff; border-radius: 30px;
+            font: 600 13px 'Poppins', sans-serif; padding: 9px 14px; cursor: pointer; }
+  .nota { color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 8px; }
+  .stato { font-size: 13px; color: #626262; padding: 8px 4px 0 4px; }
+  .stato b { color: #8D021F; }
+</style>
+</head>
+<body>
+<div class="box" id="box">
+  <video id="v" controls playsinline preload="metadata" controlslist="nodownload noplaybackrate" disablepictureinpicture></video>
+  <div class="avviso" id="avviso">⏩ Non si può andare avanti: guarda il video fino alla fine</div>
+  <div class="prossimo" id="pross">
+    <div class="k">PROSSIMO</div>
+    <div class="t" id="ptit"></div>
+    <div class="riga">
+      <button class="vai" id="vai"><div class="riemp" id="riemp"></div><span id="vaitesto">▶ Vai al prossimo</span></button>
+      <button class="rivedi" id="rivedi">↺ Rivedi</button>
+    </div>
+    <div class="nota" id="nota"></div>
+  </div>
+</div>
+<div class="stato" id="stato"></div>
+<script>
+  // Protocollo dei componenti Streamlit (senza librerie)
+  function invia(tipo, dati) { window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: tipo }, dati), "*"); }
+  function valore(v) { invia("streamlit:setComponentValue", { value: v, dataType: "json" }); }
+  function altezza() { invia("streamlit:setFrameHeight", { height: document.documentElement.scrollHeight + 4 }); }
+
+  const v = document.getElementById("v"), pross = document.getElementById("pross"), avviso = document.getElementById("avviso");
+  let args = null, massimo = 0, finito = false, inviato = false, conto = null, avvisoTimer = null;
+
+  function mostraAvviso() {
+    avviso.classList.add("on"); clearTimeout(avvisoTimer);
+    avvisoTimer = setTimeout(() => avviso.classList.remove("on"), 2200);
+  }
+  function vai() {
+    if (inviato) return; inviato = true; clearInterval(conto);
+    valore({ evento: "prossimo", visto: true, t: Date.now() });
+  }
+  function avviaConto() {
+    if (conto || !args.auto) return;
+    let s = args.secondi_auto, tot = s;
+    const riemp = document.getElementById("riemp"), testo = document.getElementById("vaitesto");
+    conto = setInterval(() => {
+      s -= 0.1; riemp.style.width = Math.min(100, (1 - s / tot) * 100) + "%";
+      testo.textContent = "▶ Vai al prossimo · " + Math.max(0, Math.ceil(s));
+      if (s <= 0) vai();
+    }, 100);
+  }
+
+  v.addEventListener("timeupdate", () => {
+    if (!v.seeking && v.currentTime > massimo && v.currentTime - massimo < 1.5) massimo = v.currentTime;
+    const resta = (v.duration || 0) - v.currentTime;
+    if (args && v.duration && resta <= args.anticipo) pross.classList.add("on");
+  });
+  v.addEventListener("seeking", () => {
+    if (args && !args.libero && v.currentTime > massimo + 0.5) { v.currentTime = massimo; mostraAvviso(); }
+  });
+  v.addEventListener("ended", () => {
+    finito = true; pross.classList.add("on");
+    document.getElementById("nota").textContent = "Video completato ✓";
+    if (!args.visto) valore({ evento: "finito", visto: true, t: Date.now() });
+    avviaConto();
+  });
+  v.addEventListener("loadedmetadata", altezza);
+  document.getElementById("vai").addEventListener("click", vai);
+  document.getElementById("rivedi").addEventListener("click", () => {
+    clearInterval(conto); conto = null; pross.classList.remove("on");
+    document.getElementById("riemp").style.width = "0"; document.getElementById("vaitesto").textContent = "▶ Vai al prossimo";
+    v.currentTime = 0; v.play();
+  });
+  window.addEventListener("resize", altezza);
+
+  window.addEventListener("message", (e) => {
+    if (!e.data || e.data.type !== "streamlit:render") return;
+    const a = e.data.args;
+    const primo = !args || args.src !== a.src;
+    args = a;
+    if (primo) {
+      v.src = a.src; massimo = 0; finito = false; inviato = false;
+      if (a.libero) massimo = 1e9;
+      document.getElementById("ptit").textContent = a.prossimo || "";
+      document.getElementById("stato").textContent = "";
+      if (!a.prossimo) pross.style.display = "none";
+    }
+    altezza();
+  });
+  invia("streamlit:componentReady", { apiVersion: 1 });
+  altezza();
+</script>
+</body>
+</html>

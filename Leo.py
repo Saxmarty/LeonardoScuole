@@ -285,6 +285,9 @@ def salva_progressi():
         "completati": sorted(st.session_state.moduli_completati),
         "voti": {k: v for k, v in st.session_state.risultati_quiz.items() if k.startswith("Rumeno · ")},
         "date": st.session_state.date_corso,
+        "tappe": {str(k): sorted(v) for k, v in st.session_state.get("ro", {}).get("fatte", {}).items()},
+        "video_visti": sorted(st.session_state.get("ro", {}).get("video_visti", set())),
+        "intro_vista": st.session_state.get("ro", {}).get("intro_vista", False),
     }
     chiama_script("SALVA_PROGRESSI", email=dati.get("email"), password=dati.get("password", ""),
                   progressi=json.dumps(pacchetto, ensure_ascii=False))
@@ -303,6 +306,11 @@ def carica_progressi():
     st.session_state.moduli_completati |= set(pacchetto.get("completati", []))
     st.session_state.risultati_quiz.update(pacchetto.get("voti", {}))
     st.session_state.date_corso.update(pacchetto.get("date", {}))
+    rs = _stato_ro()
+    for k, v in pacchetto.get("tappe", {}).items():
+        rs["fatte"].setdefault(int(k), set()).update(v)
+    rs.setdefault("video_visti", set()).update(pacchetto.get("video_visti", []))
+    rs["intro_vista"] = rs.get("intro_vista") or bool(pacchetto.get("intro_vista"))
 
 def segna_attivita_corso():
     """Registra la data di inizio del corso alla prima attività."""
@@ -353,6 +361,29 @@ def render_quiz(modulo, chiave):
                 st.markdown(f"{icona} **{n}. {q['domanda']}**  \nLa tua risposta: *{r}* · Corretta: **{q['opzioni'][q['corretta']]}**  \n<span style='color:#475569;'>{q['spiegazione']}</span>", unsafe_allow_html=True)
 
 
+# 3b-bis. PLAYER VIDEO DELLE LEZIONI (stile Netflix: "Prossimo" negli ultimi secondi, niente avanzamento veloce)
+try:
+    _player_lezione = components.declare_component(
+        "player_lezione", path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "componenti", "player_lezione"))
+except Exception:
+    _player_lezione = None
+
+def player_lezione(url, chiave, prossimo="", visto=False, anticipo=12, auto=True, secondi_auto=8):
+    """Mostra il video; restituisce l'evento nuovo ("finito" / "prossimo") oppure None."""
+    if _player_lezione is None:
+        st.video(url)
+        return None
+    valore = _player_lezione(src=url, prossimo=prossimo, libero=True, anticipo=anticipo,
+                             auto=auto, secondi_auto=secondi_auto, key=chiave, default=None)
+    if not isinstance(valore, dict):
+        return None
+    gestiti = st.session_state.setdefault("eventi_player", {})
+    if gestiti.get(chiave) == valore.get("t"):
+        return None
+    gestiti[chiave] = valore.get("t")
+    return valore.get("evento")
+
+
 # 3c. CORSO DI RUMENO A TAPPE (Video -> Impara -> Abbina -> Ascolta -> Quiz finale)
 TAPPE_RO = [("🎬", "Video"), ("🗣️", "Impara"), ("🎮", "Abbina"), ("🎧", "Ascolta"), ("🏁", "Quiz finale")]
 T_VIDEO, T_IMPARA, T_ABBINA, T_ASCOLTA, T_QUIZ = range(5)
@@ -390,12 +421,14 @@ STILI_CORSO_RO = """
 .ro-pill { display:inline-block; background:rgba(255,255,255,0.14); color:#fff; border-radius:30px; padding:5px 12px;
     font-size:0.8rem; font-weight:500; margin:0 6px 6px 0; }
 div[class*="st-key-ro_voce_"] { background:#ffffff; border:1.5px solid #ECECEC; border-radius:14px; padding:12px 14px 10px 14px;
-    margin-bottom:10px; transition:transform .15s ease, box-shadow .15s ease; gap:0.3rem !important; }
+    margin-bottom:10px; transition:transform .15s ease, box-shadow .15s ease; gap:0.5rem !important; }
 div[class*="st-key-ro_voce_"]:hover { transform:translateY(-2px); box-shadow:0 8px 18px rgba(141,2,31,0.12); }
 .ro-voce-num { color:#8D021F; font-weight:700; font-size:0.7rem; letter-spacing:1.3px; }
 .ro-voce-stato { float:right; letter-spacing:0; font-weight:600; color:#2e7d32; }
 .ro-voce-tit { color:#1F2326; font-weight:700; font-size:0.98rem; line-height:1.3; margin-top:2px; }
-.ro-voce-desc { color:#626262; font-size:0.8rem; line-height:1.35; margin-top:2px; }
+.ro-voce-desc { color:#626262; font-size:0.8rem; line-height:1.35; margin-top:2px; margin-bottom:10px; }
+div[class*="st-key-ro_voce_"] div[data-testid="stMarkdownContainer"] { margin-bottom:0 !important; }
+div[class*="st-key-ro_voce_"] div[data-testid="stElementContainer"] { margin-bottom:0 !important; }
 .ro-voce-off { opacity:0.55; }
 div[class*="st-key-ro_voce_"] div[data-testid="stButton"] > button {
     background:#ffffff !important; color:#1F2326 !important; border:1.5px solid #1F2326 !important; border-radius:30px !important;
@@ -455,7 +488,11 @@ def _titolo_breve(modulo):
     titolo = modulo["titolo"]
     return titolo.split(" - ", 1)[1] if " - " in titolo else titolo
 
-def render_percorso(ordine, rs):
+def tappa_aperta(ordine, i, rs, is_admin=False):
+    """Tutte le tappe sono apribili (nessun blocco sull'ordine)."""
+    return True
+
+def render_percorso(ordine, rs, is_admin=False):
     tappa = rs["tappa"].get(ordine, 0)
     fatte = rs["fatte"].setdefault(ordine, set())
     larghezze = []
@@ -464,8 +501,11 @@ def render_percorso(ordine, rs):
     cols = st.columns(larghezze, vertical_alignment="center")
     for i, (icona, nome) in enumerate(TAPPE_RO):
         with cols[i * 2]:
-            etichetta = f"{'✅' if i in fatte else icona} {nome}"
-            if st.button(etichetta, key=f"ro_tappa_{ordine}_{i}", type="primary" if i == tappa else "secondary", use_container_width=True):
+            aperta = tappa_aperta(ordine, i, rs, is_admin)
+            etichetta = f"{'✅' if i in fatte else (icona if aperta else '🔒')} {nome}"
+            if st.button(etichetta, key=f"ro_tappa_{ordine}_{i}", type="primary" if i == tappa else "secondary",
+                         use_container_width=True, disabled=not aperta,
+                         help=None if aperta else "Completa prima la tappa precedente"):
                 rs["tappa"][ordine] = i
                 st.rerun()
         if i < len(TAPPE_RO) - 1:
@@ -473,12 +513,17 @@ def render_percorso(ordine, rs):
                 colore = "#2e7d32" if i in fatte else "#D4AF37"
                 st.markdown(f"<div style='border-top:3px dashed {colore};'></div>", unsafe_allow_html=True)
 
-def _mostra_video(nome, link):
-    if link:
-        st.video(link)
-    else:
-        st.markdown(f"<div class='ro-video-vuoto'>🎬 Video lezione in arrivo<br><span style='font-weight:400; font-size:0.85rem; color:#626262;'>{html.escape(nome)}</span></div>",
-                    unsafe_allow_html=True)
+def _mostra_video(nome, sorgente, chiave, prossimo="", visto=False):
+    """Video nel progetto -> player con blocco avanzamento; link esterno -> player normale.
+    Restituisce l'evento del player, "assente" se il video non c'e' ancora."""
+    if sorgente and sorgente["tipo"] == "locale":
+        return player_lezione(sorgente["url"], chiave, prossimo=prossimo, visto=visto)
+    if sorgente:
+        st.video(sorgente["url"])
+        return "esterno"
+    st.markdown(f"<div class='ro-video-vuoto'>🎬 Video lezione in arrivo<br><span style='font-weight:400; font-size:0.85rem; color:#626262;'>{html.escape(nome)}</span></div>",
+                unsafe_allow_html=True)
+    return "assente"
 
 def render_benvenuto(compatto=False):
     """Video di benvenuto del docente + il metodo in 3 passi."""
@@ -488,7 +533,19 @@ def render_benvenuto(compatto=False):
         st.markdown(f"<div class='ro-benvenuto'><div class='ro-benvenuto-tit'>{html.escape(titolo.upper())}!</div>"
                     f"<div class='ro-benvenuto-sub'>{html.escape(resto)}</div>"
                     f"<div class='ro-benvenuto-small'>{html.escape(b['sottotitolo'])}</div></div>", unsafe_allow_html=True)
-    _mostra_video(corso_rumeno.VIDEO_INTRO, corso_rumeno.sorgente_video(corso_rumeno.VIDEO_INTRO))
+    rs = _stato_ro()
+    primo = sorted(corso_rumeno.MODULI_RUMENO, key=lambda m: m["ordine"])[0]
+    evento = _mostra_video(corso_rumeno.VIDEO_INTRO, corso_rumeno.sorgente_video(corso_rumeno.VIDEO_INTRO), "player_intro",
+                           prossimo=f"Modulo 1 · {_titolo_breve(primo)}", visto=rs.get("intro_vista", False))
+    if evento in ("finito", "prossimo") and not rs.get("intro_vista"):
+        rs["intro_vista"] = True
+        salva_progressi()
+        if evento == "finito":
+            st.rerun()
+    if evento == "prossimo":
+        rs["benvenuto"] = False
+        rs["modulo"] = primo["ordine"]
+        st.rerun()
     st.markdown(f"**🎯 Obiettivo:** {b['obiettivo']}")
     colonne = st.columns(len(b["passi"]))
     for i, (col, (nome, testo, esempio)) in enumerate(zip(colonne, b["passi"]), start=1):
@@ -500,11 +557,25 @@ def render_benvenuto(compatto=False):
 def render_video(modulo, rs):
     ordine = modulo["ordine"]
     st.markdown(corso_rumeno.lezione(modulo))
-    if ordine == 1:
-        with st.expander("👋 Presentazione del corso", expanded=True):
-            render_benvenuto(compatto=True)
-    for nome, link in corso_rumeno.video_modulo(modulo):
-        _mostra_video(nome, link)
+    video = corso_rumeno.video_modulo(modulo)
+    visti = rs.setdefault("video_visti", set())
+    for n, (nome, sorgente) in enumerate(video):
+        chiave_v = f"{ordine}:{nome}"
+        if len(video) > 1:
+            st.markdown(f"<h5 style='color:#8D021F; font-weight:800;'>🎬 Video {n + 1} di {len(video)}</h5>", unsafe_allow_html=True)
+        prossimo = f"Video {n + 2} di {len(video)}" if n < len(video) - 1 else "Tappa Impara · le schede del modulo"
+        evento = _mostra_video(nome, sorgente, f"player_{ordine}_{n}", prossimo=prossimo, visto=chiave_v in visti)
+        if evento in ("assente", "esterno"):
+            visti.add(chiave_v)  # video non ancora nel progetto: non si puo' controllare la visione
+        elif evento in ("finito", "prossimo") and chiave_v not in visti:
+            visti.add(chiave_v)
+            if all(f"{ordine}:{x}" in visti for x, _ in video):
+                rs["fatte"].setdefault(ordine, set()).add(T_VIDEO)
+            salva_progressi()
+            st.rerun()
+        if evento == "prossimo" and n == len(video) - 1:
+            rs["tappa"][ordine] = T_IMPARA
+            st.rerun()
     tracce = corso_rumeno.tracce_modulo(modulo)
     if tracce:
         st.markdown("<h5 style='color:#8D021F; font-weight:800; margin-top:18px;'>🎧 Ascolto completo del madrelingua</h5>", unsafe_allow_html=True)
@@ -689,7 +760,9 @@ def render_esercizio(modulo, rs, tipo):
 
 def modulo_sbloccato(modulo, moduli, is_admin=False):
     """Completamento progressivo: si apre quando il modulo precedente e' superato."""
-    if is_admin or modulo["ordine"] == moduli[0]["ordine"]:
+    if is_admin:
+        return True
+    if modulo["ordine"] == moduli[0]["ordine"]:
         return True
     precedente = next((m for m in moduli if m["ordine"] == modulo["ordine"] - 1), None)
     return precedente is None or precedente["titolo"] in st.session_state.moduli_completati
@@ -771,9 +844,12 @@ def render_corso_rumeno(is_admin=False):
         </div>
         """, unsafe_allow_html=True)
         with st.container(key="ro_tappe"):
-            render_percorso(ordine, rs)
+            render_percorso(ordine, rs, is_admin)
 
         tappa = rs["tappa"].get(ordine, T_VIDEO)
+        while tappa > 0 and not tappa_aperta(ordine, tappa, rs, is_admin):
+            tappa -= 1
+        rs["tappa"][ordine] = tappa
         if tappa == T_VIDEO:
             render_video(modulo, rs)
         elif tappa == T_IMPARA:
