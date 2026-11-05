@@ -133,7 +133,7 @@ if "date_corso" not in st.session_state:
     st.session_state.date_corso = {}  # {"inizio": "gg/mm/aaaa", "fine": "gg/mm/aaaa"}
 
 ATTESTATO_FIRMATARIO = _leggi_secret("ATTESTATO_FIRMATARIO", obbligatorio=False) or "Ciro Di Dato"
-ATTESTATO_LUOGO = _leggi_secret("ATTESTATO_LUOGO", obbligatorio=False)
+ATTESTATO_LUOGO = _leggi_secret("ATTESTATO_LUOGO", obbligatorio=False) or "Napoli"
 # LOGO UFFICIALE (file nel progetto: non dipende piu' da ImgBB)
 LOGO_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "media", "logo_leonardo_scuole.jpg")
 LOGO_URL_RISERVA = "https://leonardoscuole.it/wp-content/uploads/2026/02/TV1-copia-2.jpg"
