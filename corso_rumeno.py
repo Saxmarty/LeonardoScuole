@@ -26,6 +26,11 @@ NOME_CORSO = "Corso Online di Lingua Rumena"
 ORE_CORSO = 30
 SOGLIA_QUIZ = 0.8  # 80%
 
+# VERSIONE DEL CORSO
+# False = BASE: rispetta integralmente il documento Word (8 frasi per modulo).
+# True  = PRO: aggiunge tutte le voci del frasario del modulo e le tracce di ascolto completo.
+VERSIONE_PRO = False
+
 CARTELLA = os.path.dirname(os.path.abspath(__file__))
 CARTELLA_AUDIO = os.path.join(CARTELLA, "media", "rumeno", "audio")
 AUDIO_CONCLUSIONI = os.path.join(CARTELLA, "media", "rumeno", "conclusioni.m4a")
@@ -1284,8 +1289,8 @@ def lezione(modulo):
             f"> 🎙️ *{TESTO_DOCENTE}*\n\n"
             f"**Come si studia questo modulo**\n"
             f"1. Guarda la video lezione.\n"
-            f"2. Scorri le schede: leggi l'italiano, ascolta il rumeno e ripeti due volte.\n"
-            f"3. Riascolta la traccia completa del madrelingua (voci {v1}–{v2} del frasario).\n"
+            f"2. Leggi l'italiano, ascolta il rumeno e ripeti due volte.\n"
+            f"3. Riconosci le frasi senza guardare il testo.\n"
             f"4. Fai gli esercizi «Abbina» e «Ascolta».\n"
             f"5. Supera il quiz finale con almeno l'80% (4 risposte su 5). Puoi ripeterlo quando vuoi.")
 
@@ -1344,12 +1349,14 @@ def voci_modulo(modulo):
 
 def tracce_modulo(modulo):
     """Percorsi delle tracce di ascolto completo del modulo che esistono davvero."""
+    if not VERSIONE_PRO:
+        return []
     percorsi = [os.path.join(CARTELLA_TRACCE, nome) for nome in modulo.get("tracce", [])]
     return [p for p in percorsi if os.path.exists(p)]
 
 
 def elementi(modulo):
-    """Schede da imparare: prima le 8 frasi chiave del modulo, poi tutte le altre voci del frasario.
+    """Schede da imparare: le 8 frasi del documento (versione PRO: anche le altre voci del frasario).
     Ogni scheda: {ro, pron, it, emoji, tipo, audio, voce}."""
     icona = ICONE_MODULI.get(modulo["ordine"], "💬")
     schede, usate = [], set()
@@ -1357,8 +1364,10 @@ def elementi(modulo):
         n = FRASE_AUDIO.get(ro)
         if n:
             usate.add(n)
-        schede.append({"ro": ro, "pron": "", "it": it, "emoji": EMOJI.get(ro, icona), "tipo": "⭐ Frase chiave",
+        schede.append({"ro": ro, "pron": "", "it": it, "emoji": EMOJI.get(ro, icona), "tipo": "⭐ Frase del modulo",
                         "audio": file_voce(n) if n else None, "voce": n})
+    if not VERSIONE_PRO:
+        return schede
     v1, v2 = modulo["voci"]
     for n in range(v1, v2 + 1):
         if n in usate or n not in FRASARIO:

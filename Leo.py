@@ -260,7 +260,7 @@ def trova_lezione(titolo_argomento):
     return corso_rumeno.trova_modulo(titolo_argomento)
 
 def render_lezione(modulo):
-    tab_lez, tab_frasi = st.tabs(["📖 Lezione", "💬 Frasario del modulo"])
+    tab_lez, tab_frasi = st.tabs(["📖 Lezione", "💬 Frasi del modulo"])
     with tab_lez:
         st.markdown(corso_rumeno.lezione(modulo))
     with tab_frasi:
@@ -418,8 +418,9 @@ STILI_CORSO_RO = """
 /* elenco schede a sinistra */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(> div > .st-key-ro_lista), div[data-testid="stVerticalBlockBorderWrapper"]:has(> .st-key-ro_lista) {
     border:none !important; box-shadow:none !important; background:transparent !important; padding:0 !important; }
-.st-key-ro_lista div[data-testid="stButton"] > button { justify-content:flex-start !important; text-align:left !important; border-radius:12px !important; min-height:38px !important; }
-.st-key-ro_lista div[data-testid="stButton"] > button p { text-align:left !important; font-size:0.85rem !important; }
+div[class*="st-key-ro_s_"] button { justify-content:flex-start !important; text-align:left !important; border-radius:12px !important; min-height:38px !important; padding-left:14px !important; }
+div[class*="st-key-ro_s_"] button > div, div[class*="st-key-ro_s_"] button div[data-testid="stMarkdownContainer"] { justify-content:flex-start !important; text-align:left !important; width:100% !important; }
+div[class*="st-key-ro_s_"] button p { text-align:left !important; font-size:0.85rem !important; }
 .st-key-ro_contenuto div[data-testid="stForm"] { background:#ffffff; border:1.5px solid #ECECEC !important; border-radius:18px; padding:18px 22px; }
 .ro-emoji { font-size:6rem; line-height:1.2; padding:22px 0 6px 0; }
 .ro-pron { color:#8D021F; font-size:1.05rem; font-weight:600; min-height:1.6rem; }
@@ -646,8 +647,8 @@ def render_benvenuto(compatto=False):
 def render_video(modulo, rs):
     ordine = modulo["ordine"]
     v1, v2 = modulo["voci"]
-    passi = ["Guarda la video lezione", "Scorri le schede: leggi l'italiano, ascolta il rumeno e ripeti due volte",
-             f"Riascolta la traccia completa del madrelingua (voci {v1}–{v2})", "Fai gli esercizi «Abbina» e «Ascolta»",
+    passi = ["Guarda la video lezione", "Leggi la traduzione italiana di ogni frase",
+             "Ascolta la frase rumena e ripetila due volte", "Riconoscila senza guardare il testo: esercizi «Abbina» e «Ascolta»",
              "Supera il quiz finale con almeno l'80% (4 su 5): puoi ripeterlo quando vuoi"]
     passi_html = "".join(f"<div class='ro-passo'><span class='ro-passo-n'>{i}</span><span>{html.escape(t)}</span></div>" for i, t in enumerate(passi, 1))
     st.markdown(f"""
@@ -699,10 +700,10 @@ def render_impara(modulo, rs):
 
     col_lista, col_scheda = st.columns([1.15, 2], gap="medium")
     with col_lista:
-        st.caption(f"📚 {len(visti)}/{len(schede)} schede viste · ⭐ = frase chiave del quiz")
+        st.caption(f"📚 {len(visti)}/{len(schede)} frasi viste")
         with st.container(height=560, border=False, key="ro_lista"):
             for i, s in enumerate(schede):
-                segno = "✅" if i in visti else ("⭐" if s["tipo"].startswith("⭐") else "▫️")
+                segno = "✅" if i in visti else "▫️"
                 if st.button(f"{segno} {s['it']}", key=f"ro_s_{ordine}_{i}", type="primary" if i == idx else "secondary", use_container_width=True):
                     rs["scheda"][ordine] = i
                     st.rerun()
@@ -721,18 +722,9 @@ def render_impara(modulo, rs):
         </div>
         """, unsafe_allow_html=True)
 
-        b1, b3 = st.columns([2, 1], vertical_alignment="top")
-        with b1:
-            lettore_audio(s, f"impara_{ordine}_{idx}")
+        lettore_audio(s, f"impara_{ordine}_{idx}")
         segna_attivita_corso()
-        with b3.popover("🎤 Registrati", use_container_width=True):
-            st.caption("Ascolta la frase, poi registra la tua voce e confrontala con l'originale.")
-            if hasattr(st, "audio_input"):
-                registrazione = st.audio_input("Registra la tua pronuncia", key=f"ro_mic_{ordine}_{idx}")
-                if registrazione is not None:
-                    st.audio(registrazione)
-            else:
-                st.info("Registrazione non disponibile in questa versione.")
+
         n1, n2 = st.columns(2)
         if n1.button("← Precedente", key=f"ro_prev_{ordine}", disabled=(idx == 0), use_container_width=True):
             rs["scheda"][ordine] = idx - 1
