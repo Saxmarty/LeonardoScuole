@@ -7,6 +7,7 @@ import io
 import json
 import random
 import zlib
+import os
 
 import streamlit.components.v1 as components
 
@@ -15,6 +16,12 @@ try:
 except Exception:
     corso_rumeno = None
 
+try:
+    import attestato
+except Exception:
+    attestato = None
+from datetime import date
+
 # 1. CONFIGURAZIONE PAGINA
 st.set_page_config(
     page_title="Leonardo Scuole - Area Riservata",
@@ -22,6 +29,21 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# FONT UNIFORME AL SITO leonardoscuole.it (Poppins)
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400&display=swap');
+html, body, .stApp, p, h1, h2, h3, h4, h5, h6, label, li, td, th, a, button, input, textarea, select, summary,
+div[data-testid="stMarkdownContainer"], div[data-testid="stMarkdownContainer"] *, div[data-testid="stCaptionContainer"],
+div[data-testid="stTable"] *, div[data-testid="stAlert"] *, div[data-baseweb="select"] *, div[data-testid="stTab"] * {
+    font-family: 'Poppins', sans-serif !important;
+}
+span[data-testid="stIconMaterial"], .material-symbols-rounded, .material-icons {
+    font-family: 'Material Symbols Rounded' !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # CONFIGURAZIONE RISERVATA: letta dai "Secrets" di Streamlit Cloud (non sta piu' nel codice).
 # Streamlit Cloud -> app -> Settings -> Secrets. In locale: file .streamlit/secrets.toml (non va su GitHub).
@@ -106,6 +128,14 @@ if "sidebar_aperta" not in st.session_state:
 
 if "moduli_aperti" not in st.session_state:
     st.session_state.moduli_aperti = {}
+
+if "date_corso" not in st.session_state:
+    st.session_state.date_corso = {}  # {"inizio": "gg/mm/aaaa", "fine": "gg/mm/aaaa"}
+
+ATTESTATO_FIRMATARIO = _leggi_secret("ATTESTATO_FIRMATARIO", obbligatorio=False)
+ATTESTATO_LUOGO = _leggi_secret("ATTESTATO_LUOGO", obbligatorio=False)
+LOGO_URL = "https://leonardoscuole.it/wp-content/uploads/2026/02/TV1-copia-2.jpg"
+LOGO_URL_RISERVA = "https://i.ibb.co/PZHspbqt/TV1-copia-2.jpg"
 
 
 # 3. FUNZIONI BACKEND
@@ -222,26 +252,61 @@ def trova_lezione(titolo_argomento):
     return corso_rumeno.trova_modulo(titolo_argomento)
 
 def render_lezione(modulo):
-    tab_lez, tab_voc, tab_frasi = st.tabs(["📖 Lezione", "🔤 Vocaboli", "💬 Frasi utili"])
+    tab_lez, tab_frasi = st.tabs(["📖 Lezione", "💬 Frasario del modulo"])
     with tab_lez:
-        st.markdown(modulo["lezione"])
-    with tab_voc:
-        st.dataframe(
-            pd.DataFrame(modulo["vocaboli"], columns=["Rumeno", "Pronuncia", "Italiano"]),
-            use_container_width=True, hide_index=True
-        )
-        st.caption("Pronuncia: la sillaba in MAIUSCOLO è accentata · ə = vocale neutra (ă) · î = vocale di â/î · ts = z di «zio» · sc = sc di «scena»")
+        st.markdown(corso_rumeno.lezione(modulo))
     with tab_frasi:
-        st.dataframe(
-            pd.DataFrame(modulo["frasi"], columns=["Rumeno", "Italiano"]),
-            use_container_width=True, hide_index=True
-        )
+        righe = [(s["voce"] or "", s["it"], s["ro"]) for s in corso_rumeno.elementi(modulo)]
+        st.dataframe(pd.DataFrame(righe, columns=["Voce", "Italiano", "Rumeno"]), use_container_width=True, hide_index=True)
+
+
+def soglia_voto(modulo):
+    """Voto minimo in trentesimi: 80% per il corso di rumeno."""
+    if corso_rumeno is not None and corso_rumeno.trova_modulo(modulo.get("titolo")):
+        return round(30 * corso_rumeno.SOGLIA_QUIZ)
+    return 18
+
+
+# PROGRESSI SALVATI SUL FOGLIO GOOGLE (azioni SALVA_PROGRESSI / LEGGI_PROGRESSI dello script).
+# Se lo script non le conosce ancora, la piattaforma funziona lo stesso (progressi solo per la sessione).
+def salva_progressi():
+    dati = st.session_state.get("dati_utente", {})
+    if not dati.get("email"):
+        return
+    pacchetto = {
+        "completati": sorted(st.session_state.moduli_completati),
+        "voti": {k: v for k, v in st.session_state.risultati_quiz.items() if k.startswith("Rumeno · ")},
+        "date": st.session_state.date_corso,
+    }
+    chiama_script("SALVA_PROGRESSI", email=dati.get("email"), password=dati.get("password", ""),
+                  progressi=json.dumps(pacchetto, ensure_ascii=False))
+
+def carica_progressi():
+    dati = st.session_state.get("dati_utente", {})
+    testo = chiama_script("LEGGI_PROGRESSI", email=dati.get("email", ""), password=dati.get("password", ""))
+    try:
+        pacchetto = json.loads(testo) if testo else {}
+        if isinstance(pacchetto, str):
+            pacchetto = json.loads(pacchetto)
+    except Exception:
+        return
+    if not isinstance(pacchetto, dict):
+        return
+    st.session_state.moduli_completati |= set(pacchetto.get("completati", []))
+    st.session_state.risultati_quiz.update(pacchetto.get("voti", {}))
+    st.session_state.date_corso.update(pacchetto.get("date", {}))
+
+def segna_attivita_corso():
+    """Registra la data di inizio del corso alla prima attività."""
+    if "inizio" not in st.session_state.date_corso:
+        st.session_state.date_corso["inizio"] = date.today().strftime("%d/%m/%Y")
 
 def render_quiz(modulo, chiave):
     titolo = modulo["titolo"]
     domande = modulo["quiz"]
+    soglia = soglia_voto(modulo)
     st.markdown(f"<h4 style='color:#7D001E; font-weight:800;'>📝 Quiz: {titolo}</h4>", unsafe_allow_html=True)
-    st.caption(f"{len(domande)} domande · superi il modulo con almeno 18/30")
+    st.caption(f"{len(domande)} domande · superi il modulo con almeno {soglia}/30 · puoi ripeterlo quando vuoi")
 
     with st.form(f"form_quiz_{chiave}"):
         risposte = []
@@ -259,41 +324,50 @@ def render_quiz(modulo, chiave):
             corrette = [r == q["opzioni"][q["corretta"]] for q, r in zip(domande, risposte)]
             voto = round(sum(corrette) / len(domande) * 30)
             st.session_state.esiti_quiz[titolo] = {"voto": voto, "corrette": corrette, "risposte": risposte}
-            st.session_state.risultati_quiz[f"Rumeno · {titolo}"] = voto
-            if voto >= 18:
+            chiave_voto = f"Rumeno · {titolo}"
+            st.session_state.risultati_quiz[chiave_voto] = max(voto, st.session_state.risultati_quiz.get(chiave_voto, 0))
+            if voto >= soglia:
                 st.session_state.moduli_completati.add(titolo)
+                if corso_rumeno is not None and all(m["titolo"] in st.session_state.moduli_completati for m in corso_rumeno.MODULI_RUMENO):
+                    st.session_state.date_corso.setdefault("fine", date.today().strftime("%d/%m/%Y"))
+            salva_progressi()
 
     esito = st.session_state.esiti_quiz.get(titolo)
     if esito:
         n_ok = sum(esito["corrette"])
-        if esito["voto"] >= 18:
+        if esito["voto"] >= soglia:
             st.success(f"🎉 Voto: **{esito['voto']}/30** ({n_ok}/{len(domande)} risposte esatte). Modulo superato e segnato come completato!")
         else:
             st.error(f"📚 Voto: **{esito['voto']}/30** ({n_ok}/{len(domande)} risposte esatte). Ripassa la lezione e riprova.")
-        with st.expander("🔍 Rivedi le risposte", expanded=esito["voto"] < 18):
+        with st.expander("🔍 Rivedi le risposte", expanded=esito["voto"] < soglia):
             for n, (q, ok, r) in enumerate(zip(domande, esito["corrette"], esito["risposte"]), start=1):
                 icona = "✅" if ok else "❌"
                 st.markdown(f"{icona} **{n}. {q['domanda']}**  \nLa tua risposta: *{r}* · Corretta: **{q['opzioni'][q['corretta']]}**  \n<span style='color:#475569;'>{q['spiegazione']}</span>", unsafe_allow_html=True)
 
 
-# 3c. CORSO DI RUMENO A TAPPE (Impara -> Abbina -> Ascolta -> Quiz finale)
-TAPPE_RO = [("🗣️", "Impara"), ("🎮", "Abbina"), ("🎧", "Ascolta"), ("🏁", "Quiz finale")]
+# 3c. CORSO DI RUMENO A TAPPE (Video -> Impara -> Abbina -> Ascolta -> Quiz finale)
+TAPPE_RO = [("🎬", "Video"), ("🗣️", "Impara"), ("🎮", "Abbina"), ("🎧", "Ascolta"), ("🏁", "Quiz finale")]
+T_VIDEO, T_IMPARA, T_ABBINA, T_ASCOLTA, T_QUIZ = range(5)
 DOMANDE_ESERCIZIO = 6
-SOGLIA_ESERCIZIO = 4  # risposte giuste su 6 per segnare la tappa come fatta
+SOGLIA_ESERCIZIO = 5  # risposte giuste su 6 (80%) per segnare la tappa come fatta
 
 STILI_CORSO_RO = """
 <style>
 .ro-card { background:#ffffff; border:2px solid #D4AF37; border-radius:16px; overflow:hidden;
            box-shadow:0 10px 30px rgba(125,0,30,0.08); margin-bottom:14px; text-align:center; }
-.ro-banda { background:#FFF4CC; color:#7D001E; font-size:1.9rem; font-weight:800; padding:18px 16px; }
-.ro-emoji { font-size:7rem; line-height:1.2; padding:26px 0 6px 0; }
-.ro-pron { color:#7D001E; font-size:1.05rem; font-weight:600; min-height:1.6rem; }
-.ro-it { color:#475569; font-size:1.25rem; padding:6px 16px 4px 16px; }
-.ro-tipo { color:#94a3b8; font-size:0.8rem; padding:4px 0 16px 0; text-transform:uppercase; letter-spacing:1px; }
-.ro-nav-titolo { color:#7D001E; font-weight:900; font-size:1.25rem; margin-bottom:2px; }
+.ro-banda { background:#FFF4CC; color:#8D021F; font-size:1.7rem; font-weight:800; padding:18px 16px; }
+.ro-emoji { font-size:6rem; line-height:1.2; padding:22px 0 6px 0; }
+.ro-pron { color:#8D021F; font-size:1.05rem; font-weight:600; min-height:1.6rem; }
+.ro-it { color:#626262; font-size:1.2rem; padding:6px 16px 4px 16px; }
+.ro-tipo { color:#94a3b8; font-size:0.78rem; padding:4px 0 16px 0; text-transform:uppercase; letter-spacing:1px; }
+.ro-nav-titolo { color:#8D021F; font-weight:900; font-size:1.2rem; margin-bottom:2px; }
 .ro-materia { color:#D4AF37; font-weight:800; font-size:0.78rem; text-transform:uppercase; letter-spacing:1px; margin:14px 0 6px 0; }
-.ro-titolo { color:#7D001E; font-weight:900; font-size:1.7rem; margin:0; }
-.ro-sotto { color:#475569; margin:4px 0 14px 0; }
+.ro-titolo { color:#8D021F; font-weight:900; font-size:1.6rem; margin:0; }
+.ro-sotto { color:#626262; margin:4px 0 14px 0; }
+.ro-video-vuoto { background:#FFF4CC; border:2px dashed #D4AF37; border-radius:14px; padding:40px 20px;
+                  text-align:center; color:#8D021F; font-weight:600; }
+.att-card { background:#ffffff; border:2px solid #D4AF37; border-left:6px solid #8D021F; border-radius:14px; padding:20px 24px; margin-bottom:14px; }
+.att-titolo { color:#8D021F; font-weight:800; font-size:1.25rem; margin:0 0 4px 0; }
 </style>
 """
 
@@ -304,7 +378,7 @@ def _stato_ro():
 
 @st.cache_data(show_spinner=False, max_entries=1000)
 def audio_rumeno(testo, lento=False):
-    """Voce rumena generata con Google (gTTS). None se il servizio non risponde."""
+    """Voce rumena sintetica (gTTS), usata solo per le frasi senza registrazione madrelingua."""
     try:
         from gtts import gTTS
         buffer = io.BytesIO()
@@ -313,12 +387,21 @@ def audio_rumeno(testo, lento=False):
     except Exception:
         return None
 
-def riproduci(testo, lento=False):
+@st.cache_data(show_spinner=False, max_entries=600)
+def leggi_file_audio(percorso):
+    with open(percorso, "rb") as f:
+        return f.read()
+
+def riproduci(scheda, lento=False):
+    """Riproduce la scheda: registrazione madrelingua se c'e', altrimenti voce sintetica."""
+    if scheda.get("audio") and not lento:
+        st.audio(leggi_file_audio(scheda["audio"]), format="audio/mp3", autoplay=True)
+        return
+    testo = corso_rumeno.testo_da_leggere(scheda["ro"])
     dati_audio = audio_rumeno(testo, lento)
     if dati_audio:
         st.audio(dati_audio, format="audio/mp3", autoplay=True)
     else:
-        # Riserva: voce rumena del browser (se il dispositivo ne ha una)
         components.html(
             "<script>const u=new SpeechSynthesisUtterance(" + json.dumps(testo) + ");"
             f"u.lang='ro-RO';u.rate={0.6 if lento else 0.95};"
@@ -333,7 +416,10 @@ def _titolo_breve(modulo):
 def render_percorso(ordine, rs):
     tappa = rs["tappa"].get(ordine, 0)
     fatte = rs["fatte"].setdefault(ordine, set())
-    cols = st.columns([4, 1, 4, 1, 4, 1, 4], vertical_alignment="center")
+    larghezze = []
+    for i in range(len(TAPPE_RO)):
+        larghezze += [4, 1] if i < len(TAPPE_RO) - 1 else [4]
+    cols = st.columns(larghezze, vertical_alignment="center")
     for i, (icona, nome) in enumerate(TAPPE_RO):
         with cols[i * 2]:
             etichetta = f"{'✅' if i in fatte else icona} {nome}"
@@ -345,41 +431,68 @@ def render_percorso(ordine, rs):
                 colore = "#2e7d32" if i in fatte else "#D4AF37"
                 st.markdown(f"<div style='border-top:3px dashed {colore};'></div>", unsafe_allow_html=True)
 
+def _mostra_video(nome, link):
+    if link:
+        st.video(link)
+    else:
+        st.markdown(f"<div class='ro-video-vuoto'>🎬 Video lezione in arrivo<br><span style='font-weight:400; font-size:0.85rem; color:#626262;'>{html.escape(nome)}</span></div>",
+                    unsafe_allow_html=True)
+
+def render_video(modulo, rs):
+    ordine = modulo["ordine"]
+    st.markdown(corso_rumeno.lezione(modulo))
+    if ordine == 1:
+        with st.expander("👋 Presentazione del corso", expanded=True):
+            _mostra_video(corso_rumeno.VIDEO_INTRO, corso_rumeno.VIDEO_LINK.get(corso_rumeno.VIDEO_INTRO, ""))
+    for nome, link in corso_rumeno.video_modulo(modulo):
+        _mostra_video(nome, link)
+    tracce = corso_rumeno.tracce_modulo(modulo)
+    if tracce:
+        st.markdown("<h5 style='color:#8D021F; font-weight:800; margin-top:18px;'>🎧 Ascolto completo del madrelingua</h5>", unsafe_allow_html=True)
+        st.caption("Tutte le frasi del modulo lette di seguito: ascolta e ripeti.")
+        for t in tracce:
+            st.audio(leggi_file_audio(t), format="audio/mp3")
+    rs["fatte"].setdefault(ordine, set()).add(T_VIDEO)
+    if st.button("🗣️ Vai alle schede →", key=f"ro_video_next_{ordine}", type="primary", use_container_width=True):
+        rs["tappa"][ordine] = T_IMPARA
+        st.rerun()
+
 def render_impara(modulo, rs):
     ordine = modulo["ordine"]
     schede = corso_rumeno.elementi(modulo)
     visti = rs["visti"].setdefault(ordine, set())
     idx = min(rs["scheda"].get(ordine, 0), len(schede) - 1)
     visti.add(idx)
-    if len(visti) == len(schede):
-        rs["fatte"].setdefault(ordine, set()).add(0)
+    n_chiave = sum(1 for s in schede if s["tipo"].startswith("⭐"))
+    if all(i in visti for i in range(n_chiave)) or len(visti) == len(schede):
+        rs["fatte"].setdefault(ordine, set()).add(T_IMPARA)
 
     col_lista, col_scheda = st.columns([1.15, 2], gap="medium")
     with col_lista:
-        st.caption(f"📚 {len(visti)}/{len(schede)} schede viste")
+        st.caption(f"📚 {len(visti)}/{len(schede)} schede viste · ⭐ = frase chiave del quiz")
         with st.container(height=560, border=False):
             for i, s in enumerate(schede):
-                segno = "✅" if i in visti else "▫️"
+                segno = "✅" if i in visti else ("⭐" if s["tipo"].startswith("⭐") else "▫️")
                 if st.button(f"{segno} {s['it']}", key=f"ro_s_{ordine}_{i}", type="primary" if i == idx else "secondary", use_container_width=True):
                     rs["scheda"][ordine] = i
                     st.rerun()
 
     with col_scheda:
         s = schede[idx]
-        pron = f"🔊 {html.escape(s['pron'])}" if s["pron"] else "&nbsp;"
+        voce = "🎙️ registrazione madrelingua" if s["audio"] else "🤖 voce sintetica"
         st.markdown(f"""
         <div class="ro-card">
             <div class="ro-banda">{html.escape(s['ro'])}</div>
             <div class="ro-emoji">{s['emoji']}</div>
-            <div class="ro-pron">{pron}</div>
+            <div class="ro-pron">{voce}</div>
             <div class="ro-it">{html.escape(s['it'])}</div>
-            <div class="ro-tipo">{s['tipo']} · {idx + 1} di {len(schede)}</div>
+            <div class="ro-tipo">{html.escape(s['tipo'])} · {idx + 1} di {len(schede)}</div>
         </div>
         """, unsafe_allow_html=True)
 
         b1, b2, b3 = st.columns(3)
         ascolta = b1.button("▶ Ascolta", key=f"ro_play_{ordine}_{idx}", use_container_width=True)
-        lento = b2.button("🐢 Lento", key=f"ro_slow_{ordine}_{idx}", use_container_width=True)
+        lento = b2.button("🐢 Lento", key=f"ro_slow_{ordine}_{idx}", use_container_width=True, help="Lettura rallentata (voce sintetica)")
         with b3.popover("🎤 Registrati", use_container_width=True):
             st.caption("Ascolta la frase, poi registra la tua voce e confrontala con l'originale.")
             if hasattr(st, "audio_input"):
@@ -389,7 +502,8 @@ def render_impara(modulo, rs):
             else:
                 st.info("Registrazione non disponibile in questa versione.")
         if ascolta or lento:
-            riproduci(corso_rumeno.testo_da_leggere(s["ro"]), lento=lento)
+            segna_attivita_corso()
+            riproduci(s, lento=lento)
 
         n1, n2 = st.columns(2)
         if n1.button("← Precedente", key=f"ro_prev_{ordine}", disabled=(idx == 0), use_container_width=True):
@@ -401,18 +515,25 @@ def render_impara(modulo, rs):
                 st.rerun()
         else:
             if n2.button("🎮 Vai all'esercizio →", key=f"ro_to_ex_{ordine}", type="primary", use_container_width=True):
-                rs["tappa"][ordine] = 1
+                rs["tappa"][ordine] = T_ABBINA
                 st.rerun()
-
-        with st.expander("ℹ️ Spiegazione della lezione"):
-            st.markdown(modulo["lezione"])
 
 def _domande_esercizio(modulo, tipo, seme):
     schede = corso_rumeno.elementi(modulo)
+    if tipo == "ascolta":
+        con_audio = [s for s in schede if s["audio"]]
+        if len(con_audio) >= 4:
+            schede = con_audio
     rnd = random.Random(seme)
     campo = "it" if tipo == "abbina" else "ro"
+    # le frasi chiave hanno la precedenza, poi le altre voci del modulo
+    chiave = [i for i, s in enumerate(schede) if s["tipo"].startswith("⭐")]
+    altre_i = [i for i in range(len(schede)) if i not in chiave]
+    rnd.shuffle(chiave); rnd.shuffle(altre_i)
+    scelte = (chiave[:4] + altre_i)[:DOMANDE_ESERCIZIO] if len(schede) > DOMANDE_ESERCIZIO else list(range(len(schede)))
+    rnd.shuffle(scelte)
     domande = []
-    for i in rnd.sample(range(len(schede)), k=min(DOMANDE_ESERCIZIO, len(schede))):
+    for i in scelte:
         giusta = schede[i][campo]
         altre = sorted({s[campo] for j, s in enumerate(schede) if j != i and s[campo] != giusta})
         opzioni = rnd.sample(altre, k=min(3, len(altre))) + [giusta]
@@ -422,7 +543,7 @@ def _domande_esercizio(modulo, tipo, seme):
 
 def render_esercizio(modulo, rs, tipo):
     ordine = modulo["ordine"]
-    indice_tappa = 1 if tipo == "abbina" else 2
+    indice_tappa = T_ABBINA if tipo == "abbina" else T_ASCOLTA
     stato = rs["eserc"].setdefault(f"{tipo}_{ordine}", {"seme": random.randint(1, 10**9), "n": 0, "esiti": [], "scelta": None, "auto": -1})
     domande = _domande_esercizio(modulo, tipo, stato["seme"])
     totale = len(domande)
@@ -430,12 +551,11 @@ def render_esercizio(modulo, rs, tipo):
     if tipo == "abbina":
         st.markdown("<p class='ro-sotto'>🎮 Leggi la frase in rumeno e scegli la traduzione giusta.</p>", unsafe_allow_html=True)
     else:
-        st.markdown("<p class='ro-sotto'>🎧 Ascolta e scegli cosa hai sentito. Puoi riascoltare quante volte vuoi.</p>", unsafe_allow_html=True)
+        st.markdown("<p class='ro-sotto'>🎧 Ascolta il madrelingua e scegli cosa hai sentito. Puoi riascoltare quante volte vuoi.</p>", unsafe_allow_html=True)
 
-    # RISULTATO FINALE
     if stato["n"] >= totale:
         giuste = sum(stato["esiti"])
-        if giuste >= SOGLIA_ESERCIZIO:
+        if giuste >= min(SOGLIA_ESERCIZIO, totale):
             rs["fatte"].setdefault(ordine, set()).add(indice_tappa)
             st.success(f"🎉 Ottimo! {giuste} risposte giuste su {totale}.")
         else:
@@ -481,7 +601,7 @@ def render_esercizio(modulo, rs, tipo):
     primo_ascolto = (tipo == "ascolta" and stato["auto"] != n)
     if ascolta or lento or primo_ascolto:
         stato["auto"] = n
-        riproduci(corso_rumeno.testo_da_leggere(s["ro"]), lento=lento)
+        riproduci(s, lento=lento)
 
     griglia = st.columns(2)
     for k, opzione in enumerate(d["opzioni"]):
@@ -493,6 +613,7 @@ def render_esercizio(modulo, rs, tipo):
                 segno = "❌ "
         with griglia[k % 2]:
             if st.button(f"{segno}{opzione}", key=f"ro_opt_{tipo}_{ordine}_{n}_{k}", disabled=risposto, use_container_width=True):
+                segna_attivita_corso()
                 stato["esiti"].append(opzione == d["giusta"])
                 stato["scelta"] = opzione
                 st.rerun()
@@ -507,7 +628,14 @@ def render_esercizio(modulo, rs, tipo):
             stato["scelta"] = None
             st.rerun()
 
-def render_corso_rumeno():
+def modulo_sbloccato(modulo, moduli, is_admin=False):
+    """Completamento progressivo: si apre quando il modulo precedente e' superato."""
+    if is_admin or modulo["ordine"] == moduli[0]["ordine"]:
+        return True
+    precedente = next((m for m in moduli if m["ordine"] == modulo["ordine"] - 1), None)
+    return precedente is None or precedente["titolo"] in st.session_state.moduli_completati
+
+def render_corso_rumeno(is_admin=False):
     rs = _stato_ro()
     st.markdown(STILI_CORSO_RO, unsafe_allow_html=True)
     moduli = sorted(corso_rumeno.MODULI_RUMENO, key=lambda m: m["ordine"])
@@ -515,45 +643,132 @@ def render_corso_rumeno():
 
     col_nav, col_main = st.columns([1, 3.3], gap="large")
     with col_nav:
-        st.markdown("<div class='ro-nav-titolo'>🇷🇴 Corso di Rumeno · A1</div>", unsafe_allow_html=True)
+        st.markdown("<div class='ro-nav-titolo'>🇷🇴 Corso Online di Rumeno</div>", unsafe_allow_html=True)
         st.progress(len(completati) / len(moduli))
-        st.caption(f"{len(completati)} moduli su {len(moduli)} completati")
-        materia_corrente = None
+        st.caption(f"{len(completati)} moduli su {len(moduli)} completati · {corso_rumeno.ORE_CORSO} ore")
+        st.markdown(f"<div class='ro-materia'>{html.escape(corso_rumeno.MATERIA_BASE)} · 15 moduli</div>", unsafe_allow_html=True)
         for m in moduli:
-            if m["materia"] != materia_corrente:
-                materia_corrente = m["materia"]
-                st.markdown(f"<div class='ro-materia'>{html.escape(materia_corrente)}</div>", unsafe_allow_html=True)
-            icona = "✅" if m["titolo"] in completati else corso_rumeno.ICONE_MODULI.get(m["ordine"], "📘")
-            if st.button(f"{icona} {m['ordine']}. {_titolo_breve(m)}", key=f"ro_mod_{m['ordine']}",
+            aperto = modulo_sbloccato(m, moduli, is_admin)
+            icona = "✅" if m["titolo"] in completati else (corso_rumeno.ICONE_MODULI.get(m["ordine"], "📘") if aperto else "🔒")
+            if st.button(f"{icona} {m['ordine']}. {_titolo_breve(m)}", key=f"ro_mod_{m['ordine']}", disabled=not aperto,
                          type="primary" if m["ordine"] == rs["modulo"] else "secondary", use_container_width=True):
                 rs["modulo"] = m["ordine"]
+                st.rerun()
+        if len(completati) == len(moduli):
+            st.success("🎓 Corso completato!")
+            if st.button("🎓 Scarica l'attestato", key="ro_vai_attestati", type="primary", use_container_width=True):
+                st.session_state.sezione_attiva = "Attestati"
                 st.rerun()
 
     with col_main:
         modulo = next((m for m in moduli if m["ordine"] == rs["modulo"]), moduli[0])
+        if not modulo_sbloccato(modulo, moduli, is_admin):
+            modulo = moduli[0]
+            rs["modulo"] = modulo["ordine"]
         ordine = modulo["ordine"]
         icona = corso_rumeno.ICONE_MODULI.get(ordine, "📘")
-        st.markdown(f"<p class='ro-titolo'>{icona} {html.escape(_titolo_breve(modulo))}</p>"
+        st.markdown(f"<p class='ro-titolo'>{icona} Modulo {ordine} · {html.escape(_titolo_breve(modulo))}</p>"
                     f"<p class='ro-sotto'>{html.escape(modulo['descrizione'])}</p>", unsafe_allow_html=True)
         with st.container(border=True):
             render_percorso(ordine, rs)
 
-        tappa = rs["tappa"].get(ordine, 0)
-        if tappa == 0:
+        tappa = rs["tappa"].get(ordine, T_VIDEO)
+        if tappa == T_VIDEO:
+            render_video(modulo, rs)
+        elif tappa == T_IMPARA:
             render_impara(modulo, rs)
-        elif tappa == 1:
+        elif tappa == T_ABBINA:
             render_esercizio(modulo, rs, "abbina")
-        elif tappa == 2:
+        elif tappa == T_ASCOLTA:
             render_esercizio(modulo, rs, "ascolta")
         else:
             render_quiz(modulo, f"ro_{ordine}")
             if modulo["titolo"] in st.session_state.moduli_completati:
-                rs["fatte"].setdefault(ordine, set()).add(3)
+                rs["fatte"].setdefault(ordine, set()).add(T_QUIZ)
                 successivo = next((m for m in moduli if m["ordine"] == ordine + 1), None)
                 if successivo and st.button(f"➡️ Passa al modulo {successivo['ordine']}: {_titolo_breve(successivo)}",
                                             key=f"ro_next_mod_{ordine}", type="primary", use_container_width=True):
                     rs["modulo"] = successivo["ordine"]
+                    rs["tappa"][successivo["ordine"]] = T_VIDEO
                     st.rerun()
+
+
+# 3d. AREA ATTESTATI
+@st.cache_data(ttl=86400, show_spinner=False)
+def scarica_logo():
+    for url in (LOGO_URL, LOGO_URL_RISERVA):
+        try:
+            r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (LeonardoScuole)"})
+            if r.status_code == 200 and r.content[:3] in (b"\xff\xd8\xff", b"\x89PN"):
+                return r.content
+        except Exception:
+            pass
+    return None
+
+def stato_corso_rumeno():
+    moduli = sorted(corso_rumeno.MODULI_RUMENO, key=lambda m: m["ordine"])
+    fatti = [m for m in moduli if m["titolo"] in st.session_state.moduli_completati]
+    voti = [st.session_state.risultati_quiz.get(f"Rumeno · {m['titolo']}") for m in moduli]
+    voti = [v for v in voti if isinstance(v, (int, float))]
+    media = round(sum(voti) / len(voti) / 30 * 100) if voti else 100
+    return moduli, fatti, media
+
+def render_area_attestati(dati, is_admin=False):
+    st.markdown(STILI_CORSO_RO, unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#8D021F; font-weight:800; margin-top:0;'>🎓 Area Attestati</h2>", unsafe_allow_html=True)
+    st.markdown("<p class='ro-sotto'>Qui trovi gli attestati dei corsi che hai completato. L'attestato si sblocca quando superi tutti i quiz di modulo.</p>",
+                unsafe_allow_html=True)
+
+    if corso_rumeno is None or attestato is None:
+        st.info("Nessun attestato disponibile al momento.")
+        return
+
+    iscritto = str(dati.get("pacchetto", "")).strip().lower() == corso_rumeno.INDIRIZZO_RUMENO.lower()
+    if not iscritto and not is_admin:
+        st.markdown("<div class='custom-info-box'>Per il tuo percorso non sono ancora previsti attestati scaricabili.</div>", unsafe_allow_html=True)
+        return
+
+    moduli, fatti, media = stato_corso_rumeno()
+    completo = len(fatti) == len(moduli)
+    st.markdown(f"""
+    <div class="att-card">
+        <p class="att-titolo">🇷🇴 {html.escape(corso_rumeno.NOME_CORSO)}</p>
+        <p style="color:#626262; margin:0;">{len(moduli)} moduli · {corso_rumeno.ORE_CORSO} ore · quiz superati: <b>{len(fatti)}/{len(moduli)}</b></p>
+    </div>
+    """, unsafe_allow_html=True)
+    st.progress(len(fatti) / len(moduli))
+
+    if not completo:
+        mancanti = [f"{m['ordine']}. {_titolo_breve(m)}" for m in moduli if m not in fatti]
+        st.warning("🔒 L'attestato si sblocca quando completi tutti i moduli. Ti mancano: " + ", ".join(mancanti[:5]) + (" …" if len(mancanti) > 5 else ""))
+
+    def _pdf(nome, email):
+        oggi = date.today().strftime("%d/%m/%Y")
+        inizio = st.session_state.date_corso.get("inizio", oggi)
+        fine = st.session_state.date_corso.get("fine", oggi)
+        contenuti = ", ".join(_titolo_breve(m) for m in moduli)
+        return attestato.genera_attestato(
+            nominativo=nome, email=email, corso=corso_rumeno.NOME_CORSO, contenuti=contenuti,
+            ore=corso_rumeno.ORE_CORSO, n_moduli=len(moduli), media_quiz=media,
+            data_inizio=inizio, data_fine=fine, logo_bytes=scarica_logo(),
+            firmatario=ATTESTATO_FIRMATARIO, luogo=ATTESTATO_LUOGO)
+
+    nome = str(dati.get("nominativo", "Studente")).strip()
+    if completo:
+        pdf, codice = _pdf(nome, dati.get("email", ""))
+        st.success(f"🎉 Complimenti {nome.split()[0] if nome else ''}! Hai completato il corso. Codice attestato: **{codice}**")
+        st.download_button("📄 Scarica l'attestato (PDF)", data=pdf, file_name=f"Attestato_Rumeno_{nome.replace(' ', '_')}.pdf",
+                           mime="application/pdf", type="primary", use_container_width=True)
+        if os.path.exists(corso_rumeno.AUDIO_CONCLUSIONI):
+            st.markdown("<h5 style='color:#8D021F; font-weight:800;'>🎙️ Il saluto finale del corso</h5>", unsafe_allow_html=True)
+            st.audio(leggi_file_audio(corso_rumeno.AUDIO_CONCLUSIONI), format="audio/mp4")
+
+    if is_admin:
+        with st.expander("🛠️ Anteprima attestato (solo admin)"):
+            nome_prova = st.text_input("Nome e cognome da stampare", value="Mario Rossi", key="att_prova_nome")
+            pdf, codice = _pdf(nome_prova, "anteprima@leonardoscuole.it")
+            st.download_button("👁️ Scarica anteprima", data=pdf, file_name="Anteprima_Attestato_Rumeno.pdf",
+                               mime="application/pdf", use_container_width=True, key="att_prova_btn")
 
 
 # 4. DIALOG POP-UP MODALI
@@ -615,6 +830,7 @@ def dialog_login():
     if accedi:
         if email and password:
             if verifica_credenziali(email, password, ricordami):
+                carica_progressi()
                 st.session_state.autenticato = True
                 st.session_state.sezione_attiva = "Corsi"
                 st.session_state.open_login = False
@@ -1023,6 +1239,13 @@ else:
                         st.session_state.materia_attiva_card = None
                         st.rerun()
 
+            with st.expander("🎓 Area Attestati", expanded=False):
+                st.caption("Scarica l'attestato dei corsi che hai completato.")
+                if st.button("🎓 I miei attestati", key="sb_btn_attestati", use_container_width=True):
+                    st.session_state.sezione_attiva = "Attestati"
+                    st.session_state.materia_attiva_card = None
+                    st.rerun()
+
             with st.expander("📚 Materie del Corso", expanded=False):
                 if not df_catalogo_base.empty:
                     df_corso_user = df_catalogo_base[df_catalogo_base['Indirizzo_Studio'] == dati.get('pacchetto')]
@@ -1043,7 +1266,10 @@ else:
             st.markdown('<div class="menu-footer-signature">Piattaforma realizzata da SG Managements</div>', unsafe_allow_html=True)
 
     # CONTENUTO PRINCIPALE
-    if st.session_state.sezione_attiva == "Profilo":
+    if st.session_state.sezione_attiva == "Attestati":
+        render_area_attestati(dati, is_admin)
+
+    elif st.session_state.sezione_attiva == "Profilo":
         nome_studente = dati.get('nominativo', 'Profilo Utente')
         st.markdown(f'<div class="profile-header-title">👤 Profilo & Valutazioni: {nome_studente}</div>', unsafe_allow_html=True)
         col_foto, col_dati, col_pw = st.columns([1, 1.1, 1.1])
@@ -1231,7 +1457,7 @@ else:
             )
 
         if corso_rumeno is not None and str(pacchetto_utente).strip().lower() == corso_rumeno.INDIRIZZO_RUMENO.lower():
-            render_corso_rumeno()
+            render_corso_rumeno(is_admin)
 
         elif st.session_state.materia_attiva_card:
             nome_materia_sel = st.session_state.materia_attiva_card
