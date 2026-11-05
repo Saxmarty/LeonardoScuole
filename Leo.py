@@ -132,10 +132,18 @@ if "moduli_aperti" not in st.session_state:
 if "date_corso" not in st.session_state:
     st.session_state.date_corso = {}  # {"inizio": "gg/mm/aaaa", "fine": "gg/mm/aaaa"}
 
-ATTESTATO_FIRMATARIO = _leggi_secret("ATTESTATO_FIRMATARIO", obbligatorio=False)
+ATTESTATO_FIRMATARIO = _leggi_secret("ATTESTATO_FIRMATARIO", obbligatorio=False) or "Ciro Di Dato"
 ATTESTATO_LUOGO = _leggi_secret("ATTESTATO_LUOGO", obbligatorio=False)
-LOGO_URL = "https://leonardoscuole.it/wp-content/uploads/2026/02/TV1-copia-2.jpg"
-LOGO_URL_RISERVA = "https://i.ibb.co/PZHspbqt/TV1-copia-2.jpg"
+# LOGO UFFICIALE (file nel progetto: non dipende piu' da ImgBB)
+LOGO_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "media", "logo_leonardo_scuole.jpg")
+LOGO_URL_RISERVA = "https://leonardoscuole.it/wp-content/uploads/2026/02/TV1-copia-2.jpg"
+try:
+    with open(LOGO_FILE, "rb") as _f:
+        LOGO_BYTES = _f.read()
+    LOGO_SRC = "data:image/jpeg;base64," + base64.b64encode(LOGO_BYTES).decode("ascii")
+except Exception:
+    LOGO_BYTES = None
+    LOGO_SRC = LOGO_URL_RISERVA
 
 
 # 3. FUNZIONI BACKEND
@@ -694,15 +702,16 @@ def render_corso_rumeno(is_admin=False):
 
 
 # 3d. AREA ATTESTATI
-@st.cache_data(ttl=86400, show_spinner=False)
 def scarica_logo():
-    for url in (LOGO_URL, LOGO_URL_RISERVA):
-        try:
-            r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (LeonardoScuole)"})
-            if r.status_code == 200 and r.content[:3] in (b"\xff\xd8\xff", b"\x89PN"):
-                return r.content
-        except Exception:
-            pass
+    """Logo ufficiale per l'attestato: file locale, in riserva quello del sito."""
+    if LOGO_BYTES:
+        return LOGO_BYTES
+    try:
+        r = requests.get(LOGO_URL_RISERVA, timeout=10, headers={"User-Agent": "Mozilla/5.0 (LeonardoScuole)"})
+        if r.status_code == 200:
+            return r.content
+    except Exception:
+        pass
     return None
 
 def stato_corso_rumeno():
@@ -937,7 +946,7 @@ if not st.session_state.autenticato:
     with st.container(key="header_bar_landing"):
         col1, col2 = st.columns([8, 2])
         with col1:
-            st.image("https://i.ibb.co/PZHspbqt/TV1-copia-2.jpg", width=240)
+            st.image(LOGO_BYTES or LOGO_URL_RISERVA, width=240)
         with col2:
             if st.button("Accedi 🔑", key="btn_main_accedi"):
                 st.session_state.open_login = True
@@ -1190,9 +1199,9 @@ else:
     # Menu Custom
     if st.session_state.sidebar_aperta:
         with st.container(key="menu_custom_panel"):
-            st.markdown("""
+            st.markdown(f"""
             <div class="menu-logo-box">
-                <img src="https://i.ibb.co/PZHspbqt/TV1-copia-2.jpg" style="width: 160px; margin: 0 auto; display: block;">
+                <img src="{LOGO_SRC}" style="width: 160px; margin: 0 auto; display: block;">
             </div>
             """, unsafe_allow_html=True)
 
