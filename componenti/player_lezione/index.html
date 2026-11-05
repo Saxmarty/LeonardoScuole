@@ -103,7 +103,13 @@
     const primo = !args || args.src !== a.src;
     args = a;
     if (primo) {
-      v.src = a.src; massimo = 0; finito = false; inviato = false;
+      // I file statici stanno accanto all'app: su Streamlit Cloud sotto /~/+/, in locale alla radice
+      let src = a.src;
+      if (src.startsWith("/app/static/")) {
+        const base = location.pathname.split("/component/")[0];
+        src = base + src;
+      }
+      v.src = src; massimo = 0; finito = false; inviato = false;
       if (a.libero) massimo = 1e9;
       document.getElementById("ptit").textContent = a.prossimo || "";
       document.getElementById("stato").textContent = "";
