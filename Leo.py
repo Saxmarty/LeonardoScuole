@@ -133,7 +133,7 @@ if "date_corso" not in st.session_state:
     st.session_state.date_corso = {}  # {"inizio": "gg/mm/aaaa", "fine": "gg/mm/aaaa"}
 
 ATTESTATO_FIRMATARIO = _leggi_secret("ATTESTATO_FIRMATARIO", obbligatorio=False) or "Ciro Di Dato"
-ATTESTATO_LUOGO = _leggi_secret("ATTESTATO_LUOGO", obbligatorio=False) or "Napoli"
+ATTESTATO_LUOGO = _leggi_secret("ATTESTATO_LUOGO", obbligatorio=False) or "Campobasso"
 # LOGO UFFICIALE (file nel progetto: non dipende piu' da ImgBB)
 LOGO_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "media", "logo_leonardo_scuole.jpg")
 LOGO_URL_RISERVA = "https://leonardoscuole.it/wp-content/uploads/2026/02/TV1-copia-2.jpg"
@@ -173,6 +173,11 @@ def aggiungi_corso_rumeno(df):
         return df
     presenti = set()
     if not df.empty and {'Indirizzo_Studio', 'Argomento'}.issubset(df.columns):
+        # righe vecchie del corso di rumeno nel foglio (moduli non piu' esistenti): escluse
+        titoli = {m["titolo"].strip().lower() for m in corso_rumeno.MODULI_RUMENO}
+        vecchie = (df['Indirizzo_Studio'].astype(str).str.strip().str.lower() == corso_rumeno.INDIRIZZO_RUMENO.lower()) & \
+                  (~df['Argomento'].astype(str).str.strip().str.lower().isin(titoli))
+        df = df[~vecchie]
         for ind, arg in zip(df['Indirizzo_Studio'], df['Argomento']):
             presenti.add((str(ind).strip().lower(), str(arg).strip().lower()))
     nuove = [r for r in corso_rumeno.righe_catalogo()
@@ -504,6 +509,9 @@ div[data-testid="stHorizontalBlock"]:has(.st-key-ro_main) { align-items:flex-sta
     .ro-voce-desc { display:none; }
     .ro-nav-hero { padding:14px 16px; }
 }
+.ro-guida { background:#FFF8D6; border-left:5px solid #F3E32A; border-radius:12px; padding:12px 16px; margin:4px 0 14px 0;
+    color:#5E0015; font-size:0.92rem; line-height:1.45; }
+.ro-guida-k { display:block; color:#8D021F; font-weight:800; font-size:0.7rem; letter-spacing:1.4px; margin-bottom:3px; }
 .ro-oro { background:linear-gradient(135deg,#F3E32A 0%,#F5A623 100%); color:#5E0015; border-radius:14px; padding:14px 16px; margin:8px 0; }
 .ro-benvenuto { background:linear-gradient(135deg,#8D021F 0%,#5E0015 100%); border-radius:20px; padding:34px 30px; text-align:center;
     color:#fff; margin-bottom:16px; box-shadow:0 12px 28px rgba(141,2,31,0.22); }
@@ -1021,6 +1029,10 @@ def render_corso_rumeno(is_admin=False):
             tappa -= 1
         rs["tappa"][ordine] = tappa
         with contenuto:
+            chiave_guida = ["video", "impara", "abbina", "ascolta", "quiz"][tappa]
+            icona_t, nome_t = TAPPE_RO[tappa]
+            st.markdown(f"<div class='ro-guida'><span class='ro-guida-k'>{icona_t} {nome_t.upper()} · COSA FARE</span>"
+                        f"{html.escape(corso_rumeno.GUIDA_TAPPE.get(chiave_guida, ''))}</div>", unsafe_allow_html=True)
             if tappa == T_VIDEO:
                 render_video(modulo, rs)
             elif tappa == T_IMPARA:
@@ -1253,12 +1265,15 @@ def render_pannello_controllo():
         etichette = {"nome_corso": "Nome del corso (attestato)", "titolo_menu": "Titolo nel menu del corso", "ore": "Ore del corso",
                      "benvenuto_titolo": "Benvenuto: titolo", "benvenuto_sottotitolo": "Benvenuto: sottotitolo",
                      "obiettivo": "Obiettivo del corso", "testo_docente": "Testo del docente (in ogni modulo)",
-                     "motto": "Frase sotto i 3 passi", "chiusura": "Frase di chiusura"}
+                     "motto": "Frase sotto i 3 passi", "chiusura": "Frase di chiusura",
+                     "guida_video": "Spiegazione tappa Video", "guida_impara": "Spiegazione tappa Impara",
+                     "guida_abbina": "Spiegazione tappa Abbina", "guida_ascolta": "Spiegazione tappa Ascolta",
+                     "guida_quiz": "Spiegazione tappa Quiz finale"}
         for k, etichetta in etichette.items():
             attuale = testi.get(k, base[k])
             if k == "ore":
                 v = st.number_input(etichetta, min_value=1, max_value=500, value=int(attuale), key=f"pc_t_{k}")
-            elif k == "testo_docente":
+            elif k == "testo_docente" or k.startswith("guida_"):
                 v = st.text_area(etichetta, str(attuale), key=f"pc_t_{k}", height=110)
             else:
                 v = st.text_input(etichetta, str(attuale), key=f"pc_t_{k}")
@@ -1327,7 +1342,7 @@ def render_pannello_controllo():
     with t_att:
         att = cfg.setdefault("attestato", {})
         for k, etichetta, pred in [("firmatario", "Firmatario", "Ciro Di Dato"), ("ruolo", "Ruolo sotto la firma", "Il Coordinatore didattico"),
-                                   ("luogo", "Luogo", "Napoli")]:
+                                   ("luogo", "Luogo", "Campobasso")]:
             v = st.text_input(etichetta, att.get(k, pred), key=f"pc_a_{k}")
             if v != pred: att[k] = v
             else: att.pop(k, None)
@@ -1339,7 +1354,7 @@ def render_pannello_controllo():
                 data_fine=date.today().strftime("%d/%m/%Y"),
                 logo_bytes=base64.b64decode(cfg["logo_b64"]) if cfg.get("logo_b64") else LOGO_BYTES,
                 firmatario=att.get("firmatario", "Ciro Di Dato"), ruolo_firmatario=att.get("ruolo", "Il Coordinatore didattico"),
-                luogo=att.get("luogo", "Napoli"), colori=palette(cfg))
+                luogo=att.get("luogo", "Campobasso"), colori=palette(cfg))
             st.download_button("👁️ Scarica l'anteprima dell'attestato", data=pdf, file_name="Anteprima_attestato.pdf",
                                mime="application/pdf", key="pc_a_prova")
 
@@ -1972,7 +1987,26 @@ else:
                     st.session_state.materia_attiva_card = None
                     st.rerun()
 
-            with st.expander("📚 Materie del Corso", expanded=False):
+            e_rumeno = corso_rumeno is not None and str(dati.get("pacchetto", "")).strip().lower() == corso_rumeno.INDIRIZZO_RUMENO.lower()
+            if e_rumeno:
+                with st.expander("📚 Moduli del Corso", expanded=False):
+                    rs_m = _stato_ro()
+                    voci_menu = [("intro", "🎬 Intro · Benvenuto e metodo")] + [
+                        (m["ordine"], f"{m['ordine']}. {_titolo_breve(m)}") for m in sorted(corso_rumeno.MODULI_RUMENO, key=lambda x: x["ordine"])]
+                    for valore, etichetta in voci_menu:
+                        aperto = valore == "intro" or modulo_sbloccato(next(m for m in corso_rumeno.MODULI_RUMENO if m["ordine"] == valore),
+                                                                         sorted(corso_rumeno.MODULI_RUMENO, key=lambda x: x["ordine"]), is_admin)
+                        if st.button(etichetta if aperto else f"🔒 {etichetta}", key=f"sb_mod_{valore}", use_container_width=True, disabled=not aperto):
+                            st.session_state.sezione_attiva = "Corsi"
+                            st.session_state.materia_attiva_card = None
+                            if valore == "intro":
+                                rs_m["benvenuto"] = True
+                            else:
+                                rs_m["benvenuto"] = False
+                                rs_m["modulo"] = valore
+                            st.rerun()
+            else:
+              with st.expander("📚 Materie del Corso", expanded=False):
                 if not df_catalogo_base.empty:
                     df_corso_user = df_catalogo_base[df_catalogo_base['Indirizzo_Studio'] == dati.get('pacchetto')]
                     materie_list = sorted([str(m).strip() for m in df_corso_user['Materia'].dropna().unique() if str(m).strip()])

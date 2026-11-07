@@ -42,6 +42,20 @@ TESTO_DOCENTE = ("Benvenuti. In questa lezione impareremo le parole più utili p
 
 VIDEO_INTRO = "INTRO_Rumeno_Infermieri copia.mp4"
 
+# Spiegazione breve in cima a ogni tappa del modulo (cosa si fa e come)
+GUIDA_TAPPE = {
+    "video": "Guarda la video lezione fino alla fine: puoi fermarla e riguardarla quando vuoi. "
+             "Alla fine il riquadro «Prossimo» ti porta alle schede.",
+    "impara": "Per ogni frase leggi l'italiano, premi «Ascolta» e ripeti ad alta voce due volte. "
+              "«Lento» la fa sentire rallentata. Poi passa alla frase successiva con «Successiva →».",
+    "abbina": "Leggi la frase in rumeno e scegli la traduzione italiana giusta. "
+              "Servono almeno 5 risposte giuste su 6: puoi ripetere con domande nuove.",
+    "ascolta": "La frase parte da sola: ascoltala (anche più volte) e scegli quella che hai sentito, "
+               "senza guardare il testo.",
+    "quiz": "Rispondi a tutte le 5 domande e premi «Consegna il quiz». Con almeno 4 risposte giuste (80%) "
+            "il modulo è superato e si apre il successivo. Puoi ripeterlo quando vuoi.",
+}
+
 # Video dentro il progetto: cartella static/rumeno/video (servita da Streamlit come /app/static/...)
 # Il nome del file e' quello originale senza " copia" e "_nuova_versione" (es. Al_Bar.mp4).
 CARTELLA_VIDEO = os.path.join(CARTELLA, "static", "rumeno", "video")
@@ -1411,7 +1425,7 @@ import copy as _copy
 
 _BASE_MODULI = _copy.deepcopy(MODULI_RUMENO)
 _BASE_TESTI = {"NOME_CORSO": NOME_CORSO, "ORE_CORSO": ORE_CORSO, "TESTO_DOCENTE": TESTO_DOCENTE,
-               "BENVENUTO": _copy.deepcopy(BENVENUTO)}
+               "BENVENUTO": _copy.deepcopy(BENVENUTO), "GUIDA_TAPPE": _copy.deepcopy(GUIDA_TAPPE)}
 
 
 def testi_predefiniti():
@@ -1419,7 +1433,8 @@ def testi_predefiniti():
     return {"nome_corso": _BASE_TESTI["NOME_CORSO"], "ore": _BASE_TESTI["ORE_CORSO"],
             "testo_docente": _BASE_TESTI["TESTO_DOCENTE"], "titolo_menu": "Lingua Rumena",
             "benvenuto_titolo": b["titolo"], "benvenuto_sottotitolo": b["sottotitolo"],
-            "obiettivo": b["obiettivo"], "motto": b["motto"], "chiusura": b["chiusura"]}
+            "obiettivo": b["obiettivo"], "motto": b["motto"], "chiusura": b["chiusura"],
+            **{f"guida_{k}": v for k, v in _BASE_TESTI["GUIDA_TAPPE"].items()}}
 
 
 def modulo_predefinito(ordine):
@@ -1442,6 +1457,8 @@ def applica_personalizzazioni(cfg):
     BENVENUTO.update(_copy.deepcopy(_BASE_TESTI["BENVENUTO"]))
     BENVENUTO.update({"titolo": testi["benvenuto_titolo"], "sottotitolo": testi["benvenuto_sottotitolo"],
                       "obiettivo": testi["obiettivo"], "motto": testi["motto"], "chiusura": testi["chiusura"]})
+    GUIDA_TAPPE.clear()
+    GUIDA_TAPPE.update({k: testi[f"guida_{k}"] for k in _BASE_TESTI["GUIDA_TAPPE"]})
     MODULI_RUMENO[:] = _copy.deepcopy(_BASE_MODULI)
     for m in MODULI_RUMENO:
         mod = (cfg.get("moduli") or {}).get(str(m["ordine"])) or {}
