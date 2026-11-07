@@ -1597,6 +1597,14 @@ if not st.session_state.autenticato:
     .stApp { background-image: url('https://i.ibb.co/zTR3Yqwb/Gemini-Generated-Image-tpzaywtpzaywtpza.png') !important; background-size: cover !important; background-position: center top !important; }
     .st-key-header_bar_landing { background-color: #7D001E !important; border-top: 4px solid #D4AF37 !important; border-bottom: 4px solid #D4AF37 !important; padding: 8px 25px !important; margin: 0 !important; width: 100% !important; }
     .st-key-header_bar_landing .stButton > button { background-color: #D4AF37 !important; color: #7D001E !important; font-weight: 800 !important; border-radius: 6px !important; border: none !important; padding: 8px 28px !important; }
+    @media (max-width: 768px) {
+        .st-key-header_bar_landing { padding: 6px 10px !important; }
+        .st-key-header_bar_landing div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; align-items: center !important; }
+        .st-key-header_bar_landing div[data-testid="stColumn"] { min-width: 0 !important; width: auto !important; flex: 1 1 auto !important; }
+        .st-key-header_bar_landing img { max-width: 150px !important; height: auto !important; }
+        .st-key-header_bar_landing .stButton > button { padding: 6px 14px !important; font-size: 0.85rem !important; }
+        .main .block-container, div[data-testid="stMainBlockContainer"] { padding-left: 0.8rem !important; padding-right: 0.8rem !important; }
+    }
     </style>
     """
     st.markdown(stili_landing, unsafe_allow_html=True)
@@ -1790,6 +1798,23 @@ else:
     }}
     .global-footer-bar a {{ color: #D4AF37 !important; text-decoration: none; font-weight: 800; }}
     .global-footer-bar a:hover {{ text-decoration: underline; color: #ffffff !important; }}
+
+    /* ===== TABLET E SMARTPHONE: menu sopra la pagina, margini ridotti ===== */
+    @media (max-width: 768px) {{
+        .main .block-container, div[data-testid="stMainBlockContainer"] {{
+            padding-left: 0.9rem !important; padding-right: 0.9rem !important; padding-top: 5.4rem !important; padding-bottom: 110px !important; }}
+        .st-key-menu_custom_panel {{ width: min(86vw, 300px) !important; padding-top: 64px !important; }}
+        .menu-velo {{ display: block !important; }}
+        .hdr-benvenuto {{ font-size: 0.95rem !important; padding-left: 52px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+        .st-key-header_custom_bar {{ padding: 0 10px !important; }}
+        .global-footer-bar {{ font-size: 0.68rem; padding: 8px 10px; gap: 6px; flex-wrap: wrap; }}
+        .global-footer-bar .ftr-sep, .global-footer-bar .ftr-contatti {{ display: none; }}
+    }}
+    @media (min-width: 769px) and (max-width: 1024px) {{
+        .main .block-container, div[data-testid="stMainBlockContainer"] {{ padding-right: 1.4rem !important; }}
+        .hdr-benvenuto {{ font-size: 1.1rem !important; }}
+    }}
+    .menu-velo {{ display: none; position: fixed; inset: 0; background: rgba(20,0,6,0.45); z-index: 9999990; }}
     </style>
     """
     st.markdown(stili_area_riservata, unsafe_allow_html=True)
@@ -1797,8 +1822,8 @@ else:
     # Footer globale
     st.markdown("""
     <div class="global-footer-bar">
-        <span>🎓 <b>Leonardo Scuole</b> - Eccellenza Didattica</span> | 
-        <span>Contattaci: segreteria@leonardoscuole.it</span> |
+        <span>🎓 <b>Leonardo Scuole</b> - Eccellenza Didattica</span><span class="ftr-sep">|</span>
+        <span class="ftr-contatti">Contattaci: segreteria@leonardoscuole.it</span><span class="ftr-sep">|</span>
         <a href="https://www.leonardoscuole.it" target="_blank">Visita il nostro sito ufficiale</a>
     </div>
     """, unsafe_allow_html=True)
@@ -1827,7 +1852,7 @@ else:
     nome_solo = dati.get('nominativo', 'Studente').split()[0]
     with st.container(key="header_custom_bar"):
         st.markdown(
-            f"<div style='text-align:center; color:#ffffff; font-size:1.35rem; font-weight:800; line-height:65px;'>"
+            f"<div class='hdr-benvenuto' style='text-align:center; color:#ffffff; font-size:1.35rem; font-weight:800; line-height:65px;'>"
             f"<span style='color:#D4AF37;'>{nome_solo}</span>, benvenuto in <span style='color:#D4AF37;'>Leonardo Scuole</span>"
             f"</div>",
             unsafe_allow_html=True
@@ -1867,8 +1892,20 @@ else:
                     st.rerun()
         st.stop()
 
+    # Sul telefono il menu si chiude da solo dopo aver scelto una voce
+    try:
+        _ua = str(st.context.headers.get("User-Agent", ""))
+    except Exception:
+        _ua = ""
+    E_TELEFONO = ("Mobi" in _ua or "iPhone" in _ua) and "iPad" not in _ua
+    _posizione = (st.session_state.get("sezione_attiva"), st.session_state.get("materia_attiva_card"))
+    if E_TELEFONO and st.session_state.get("_posizione_menu") not in (None, _posizione):
+        st.session_state.sidebar_aperta = False
+    st.session_state._posizione_menu = _posizione
+
     # Menu Custom
     if st.session_state.sidebar_aperta:
+        st.markdown("<div class='menu-velo'></div>", unsafe_allow_html=True)
         with st.container(key="menu_custom_panel"):
             st.markdown(f"""
             <div class="menu-logo-box">
