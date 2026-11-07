@@ -38,6 +38,14 @@
   .tasto { position: absolute; left: 50%; top: calc(50% + 62px); transform: translateX(-50%); color: #fff; font-size: 12px;
            background: rgba(0,0,0,0.55); padding: 4px 12px; border-radius: 30px; transition: opacity .25s; pointer-events: none; }
   .tasto.via { opacity: 0; }
+  @media (hover: none) { .tasto { display: none; } }
+  @media (max-width: 600px) {
+    .play { width: 64px; height: 64px; margin: -32px 0 0 -32px; }
+    .play::after { left: 25px; top: 18px; border-width: 14px 0 14px 22px; }
+    .prossimo { right: 10px; bottom: 54px; width: calc(100% - 20px); padding: 12px 14px; }
+    .t { font-size: 14px; margin-bottom: 8px; }
+    .vai { font-size: 13px; padding: 8px 12px; }
+  }
   .stato { font-size: 13px; color: #626262; padding: 8px 4px 0 4px; }
   .stato b { color: #8D021F; }
 </style>

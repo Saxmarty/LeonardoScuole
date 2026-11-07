@@ -465,6 +465,45 @@ div[class*="st-key-ro_voce_"] div[data-testid="stButton"] > button:hover { backg
 div[class*="st-key-ro_voce_"] div[data-testid="stButton"] > button:disabled { opacity:0.5 !important; }
 .st-key-ro_tappe div[data-testid="stButton"] > button { border-radius:30px !important; font-weight:600 !important; }
 div[data-testid="stHorizontalBlock"]:has(.st-key-ro_main) { align-items:flex-start !important; overflow:visible !important; }
+/* ===== TABLET E SMARTPHONE ===== */
+@media (hover: none) { .tasto { display:none; } }
+@media (max-width: 1024px) {
+    .ro-hero-tit { font-size:1.55rem; }
+    .ro-banda { font-size:1.5rem; }
+    .ro-emoji { font-size:4.5rem; }
+    .ro-benvenuto-tit { font-size:2.3rem; }
+    .st-key-ro_tappe div[data-testid="stButton"] > button p { font-size:0.82rem !important; }
+}
+@media (max-width: 768px) {
+    /* la lezione prima, il menu dei moduli sotto */
+    div[data-testid="stHorizontalBlock"]:has(.st-key-ro_main) { flex-direction:column !important; }
+    div[data-testid="stColumn"]:has(.st-key-ro_main) { order:-1; width:100% !important; transform:none !important; }
+    div[data-testid="stColumn"]:has(.st-key-ro_main) ~ div[data-testid="stColumn"],
+    div[data-testid="stHorizontalBlock"]:has(.st-key-ro_main) > div[data-testid="stColumn"] { width:100% !important; flex:1 1 100% !important; min-width:100% !important; }
+    /* nella scheda Impara: prima la frase, poi l'elenco */
+    div[data-testid="stColumn"]:has(.ro-col-scheda) { order:-1; }
+    /* tappe su una riga che scorre in orizzontale */
+    .st-key-ro_tappe div[data-testid="stHorizontalBlock"] { flex-wrap:nowrap !important; overflow-x:auto !important; gap:8px !important;
+        -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-bottom:4px; }
+    .st-key-ro_tappe div[data-testid="stColumn"] { min-width:max-content !important; width:auto !important; flex:0 0 auto !important; }
+    .st-key-ro_tappe div[data-testid="stColumn"]:has(.ro-sep) { display:none !important; }
+    .ro-hero { padding:18px 18px; border-radius:16px; }
+    .ro-hero-tit { font-size:1.3rem; }
+    .ro-hero-sub { font-size:0.9rem; }
+    .ro-pill { font-size:0.72rem; padding:4px 10px; }
+    .ro-banda { font-size:1.3rem; padding:16px 14px 18px 14px; }
+    .ro-emoji { font-size:3.6rem; padding:14px 0 4px 0; }
+    .ro-it { font-size:1.05rem; }
+    .ro-benvenuto { padding:24px 16px; }
+    .ro-benvenuto-tit { font-size:1.9rem; }
+    .ro-benvenuto-sub { font-size:1.05rem; }
+    .ro-passi { grid-template-columns:1fr; }
+    .ro-lezione { padding:16px; }
+    /* menu dei moduli piu' compatto */
+    div[class*="st-key-ro_voce_"] { padding:10px 12px 8px 12px; margin-bottom:8px; }
+    .ro-voce-desc { display:none; }
+    .ro-nav-hero { padding:14px 16px; }
+}
 .ro-oro { background:linear-gradient(135deg,#F3E32A 0%,#F5A623 100%); color:#5E0015; border-radius:14px; padding:14px 16px; margin:8px 0; }
 .ro-benvenuto { background:linear-gradient(135deg,#8D021F 0%,#5E0015 100%); border-radius:20px; padding:34px 30px; text-align:center;
     color:#fff; margin-bottom:16px; box-shadow:0 12px 28px rgba(141,2,31,0.22); }
@@ -530,6 +569,8 @@ LETTORE_HTML = """
   .onda i:nth-child(2){animation-delay:.1s} .onda i:nth-child(3){animation-delay:.2s} .onda i:nth-child(4){animation-delay:.3s}
   @keyframes o { 0%,100%{height:4px} 50%{height:16px} }
   .nota { font-size:11px; color:#8a8a8a; margin-top:6px; text-align:center; }
+  @media (hover: none) { .nota { visibility:hidden; } }
+  @media (max-width: 480px) { button { padding:10px 14px; font-size:14px; } }
 </style>
 <div class="riga">
   <button class="play" id="p"><span class="onda"><i></i><i></i><i></i><i></i></span><span id="pt">Ascolta</span></button>
@@ -604,7 +645,7 @@ def render_percorso(ordine, rs, is_admin=False):
         if i < len(TAPPE_RO) - 1:
             with cols[i * 2 + 1]:
                 colore = "#2e7d32" if i in fatte else "#D4AF37"
-                st.markdown(f"<div style='border-top:3px dashed {colore};'></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='ro-sep' style='border-top:3px dashed {colore};'></div>", unsafe_allow_html=True)
 
 def _mostra_video(nome, sorgente, chiave, prossimo="", visto=False):
     """Video nel progetto -> player con blocco avanzamento; link esterno -> player normale.
@@ -702,6 +743,8 @@ def render_impara(modulo, rs):
         rs["fatte"].setdefault(ordine, set()).add(T_IMPARA)
 
     col_lista, col_scheda = st.columns([1.15, 2], gap="medium")
+    with col_scheda:
+        st.markdown("<span class='ro-col-scheda'></span>", unsafe_allow_html=True)
     with col_lista:
         st.caption(f"📚 {len(visti)}/{len(schede)} frasi viste")
         with st.container(height=560, border=False, key="ro_lista"):
@@ -926,6 +969,9 @@ def render_corso_rumeno(is_admin=False):
         if (!col || !riga) return;
         col.style.position = "relative"; col.style.top = "0px"; col.style.alignSelf = "flex-start";
         col.style.willChange = "transform"; col.style.transition = "transform 0.08s linear";
+        // telefono / colonne impilate: niente inseguimento
+        const affiancate = col.getBoundingClientRect().left - riga.getBoundingClientRect().left > 40;
+        if (!affiancate || T.innerWidth <= 768) { col.style.transform = "none"; return; }
         const vh = T.innerHeight;
         const offCornice = cornice ? cornice.getBoundingClientRect().top : 0;
         const rigaTop = offCornice + riga.getBoundingClientRect().top;   // posizione sullo schermo vero
