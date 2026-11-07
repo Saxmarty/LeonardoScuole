@@ -53,7 +53,7 @@ def nome_file_video(nome):
 
 # Contenuti del video di benvenuto (docente virtuale)
 BENVENUTO = {
-    "titolo": "Bun venit! Rumeno per Scienze Infermieristiche",
+    "titolo": "Bun venit! Corso di Rumeno On Line",
     "sottotitolo": "Il tuo percorso in Romania inizia da qui",
     "obiettivo": "Comunicare fin da subito, senza imparare regole a memoria.",
     "passi": [
