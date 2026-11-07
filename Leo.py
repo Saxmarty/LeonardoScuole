@@ -1598,7 +1598,7 @@ if not st.session_state.autenticato:
     .st-key-header_bar_landing { background-color: #7D001E !important; border-top: 4px solid #D4AF37 !important; border-bottom: 4px solid #D4AF37 !important; padding: 8px 25px !important; margin: 0 !important; width: 100% !important; }
     .st-key-header_bar_landing .stButton > button { background-color: #D4AF37 !important; color: #7D001E !important; font-weight: 800 !important; border-radius: 6px !important; border: none !important; padding: 8px 28px !important; }
     @media (max-width: 768px) {
-        .stApp { background-size: contain !important; background-position: center 70px !important; background-repeat: no-repeat !important; background-color: #C8102E !important; }
+        .stApp { background-size: 100% auto !important; background-position: center 150px !important; background-repeat: no-repeat !important; background-color: #C8102E !important; }
         .st-key-header_bar_landing { padding: 6px 10px !important; }
         .st-key-header_bar_landing div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; align-items: center !important; }
         .st-key-header_bar_landing div[data-testid="stColumn"] { min-width: 0 !important; width: auto !important; flex: 1 1 auto !important; }
