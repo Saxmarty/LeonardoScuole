@@ -910,10 +910,14 @@ def render_corso_rumeno(is_admin=False):
     # Se e' piu' alta dello schermo si ferma quando il suo fondo arriva in basso (si vede sempre tutta).
     components.html("""<script>
     (function () {
+      // w = pagina dell'app; T = pagina esterna. Su Streamlit Cloud l'app sta in una cornice alta quanto
+      // tutto il contenuto e lo scroll avviene sulla pagina esterna: per questo si misura tutto rispetto a T.
       const w = window.parent, d = w.document;
-      if (w.__lsSegui2) return;
-      w.__lsSegui2 = true;
-      const ALTO = 85, BASSO = 60;   // spazio per l'intestazione fissa e per la barra in basso
+      let T = w, cornice = null;
+      try { if (w.top && w.top !== w && w.top.document) { T = w.top; cornice = w.frameElement; } } catch (e) {}
+      if (w.__lsSegui3) return;
+      w.__lsSegui3 = true;
+      const ALTO = 85, BASSO = 60;   // spazio per l'intestazione e per la barra in basso
       function aggiorna() {
         const el = d.querySelector(".st-key-ro_main");
         if (!el) return;
@@ -922,18 +926,19 @@ def render_corso_rumeno(is_admin=False):
         if (!col || !riga) return;
         col.style.position = "relative"; col.style.top = "0px"; col.style.alignSelf = "flex-start";
         col.style.willChange = "transform"; col.style.transition = "transform 0.08s linear";
-        const vh = w.innerHeight, rr = riga.getBoundingClientRect();
+        const vh = T.innerHeight;
+        const offCornice = cornice ? cornice.getBoundingClientRect().top : 0;
+        const rigaTop = offCornice + riga.getBoundingClientRect().top;   // posizione sullo schermo vero
         const hCol = col.offsetHeight, hRiga = riga.offsetHeight;
-        // dove vorrei la lezione sullo schermo: in alto, oppure col fondo in basso se e' piu' alta dello schermo
         const cima = (hCol <= vh - ALTO - BASSO) ? ALTO : Math.min(ALTO, vh - BASSO - hCol);
-        let spost = cima - rr.top;
+        let spost = cima - rigaTop;
         spost = Math.max(0, Math.min(spost, hRiga - hCol));
         col.style.transform = "translateY(" + Math.round(spost) + "px)";
       }
-      d.addEventListener("scroll", aggiorna, true);
-      w.addEventListener("scroll", aggiorna, true);
-      w.addEventListener("resize", aggiorna);
-      setInterval(aggiorna, 300);
+      [T, w].forEach(function (x) {
+        try { x.addEventListener("scroll", aggiorna, true); x.document.addEventListener("scroll", aggiorna, true); x.addEventListener("resize", aggiorna); } catch (e) {}
+      });
+      setInterval(aggiorna, 250);
     })();
     </script>""", height=0)
 
