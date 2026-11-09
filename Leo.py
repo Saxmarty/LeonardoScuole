@@ -1615,11 +1615,15 @@ if not st.session_state.autenticato:
     /* niente spazi tra gli elementi invisibili (stili, componenti): la barra parte dal bordo in alto */
     div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] { gap: 0 !important; }
     .banner-landing-mobile, .st-key-cta_landing_mobile { display: none !important; }
+    /* il componente invisibile del "Ricordami" non deve occupare spazio */
+    div[class*="st-key-ricordami"] { height: 0 !important; min-height: 0 !important; overflow: hidden !important; margin: 0 !important; padding: 0 !important; }
+    div[class*="st-key-ricordami"] iframe { height: 0 !important; }
     @media (max-width: 768px) {
         .stApp { background-image: none !important; background-color: #C8102E !important; }
         .banner-landing-mobile { display: block !important; width: 100% !important; height: auto !important; margin: 0 !important; }
         .st-key-cta_landing_mobile { display: block !important; padding: 22px 18px 30px 18px !important; text-align: center !important; }
-        .st-key-cta_landing_mobile p.cta-testo { color: #ffffff !important; font-size: 1.05rem !important; font-weight: 600 !important; margin: 0 0 14px 0 !important; }
+        .st-key-cta_landing_mobile p.cta-testo { color: #ffffff !important; font-size: 1.05rem !important; font-weight: 600 !important; margin: 0 0 14px 0 !important; text-align: center !important; }
+        .st-key-cta_landing_mobile div[data-testid="stElementContainer"], .st-key-cta_landing_mobile .stButton { width: 100% !important; }
         .st-key-cta_landing_mobile .stButton > button { width: 100% !important; background-color: #D4AF37 !important; color: #7D001E !important; font-weight: 800 !important; font-size: 1.1rem !important; border: none !important; border-radius: 10px !important; padding: 14px 10px !important; box-shadow: 0 6px 18px rgba(0,0,0,0.25) !important; }
         .st-key-cta_landing_mobile .stButton > button p { color: #7D001E !important; font-weight: 800 !important; }
         .st-key-header_bar_landing { padding: 6px 10px !important; }
