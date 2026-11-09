@@ -1612,14 +1612,22 @@ if not st.session_state.autenticato:
     .stApp { background-image: url('https://i.ibb.co/zTR3Yqwb/Gemini-Generated-Image-tpzaywtpzaywtpza.png') !important; background-size: cover !important; background-position: center top !important; }
     .st-key-header_bar_landing { background-color: #7D001E !important; border-top: 4px solid #D4AF37 !important; border-bottom: 4px solid #D4AF37 !important; padding: 8px 25px !important; margin: 0 !important; width: 100% !important; }
     .st-key-header_bar_landing .stButton > button { background-color: #D4AF37 !important; color: #7D001E !important; font-weight: 800 !important; border-radius: 6px !important; border: none !important; padding: 8px 28px !important; }
+    /* niente spazi tra gli elementi invisibili (stili, componenti): la barra parte dal bordo in alto */
+    div[data-testid="stMainBlockContainer"] > div[data-testid="stVerticalBlock"] { gap: 0 !important; }
+    .banner-landing-mobile, .st-key-cta_landing_mobile { display: none !important; }
     @media (max-width: 768px) {
-        .stApp { background-size: 100% auto !important; background-position: center 150px !important; background-repeat: no-repeat !important; background-color: #C8102E !important; }
+        .stApp { background-image: none !important; background-color: #C8102E !important; }
+        .banner-landing-mobile { display: block !important; width: 100% !important; height: auto !important; margin: 0 !important; }
+        .st-key-cta_landing_mobile { display: block !important; padding: 22px 18px 30px 18px !important; text-align: center !important; }
+        .st-key-cta_landing_mobile p.cta-testo { color: #ffffff !important; font-size: 1.05rem !important; font-weight: 600 !important; margin: 0 0 14px 0 !important; }
+        .st-key-cta_landing_mobile .stButton > button { width: 100% !important; background-color: #D4AF37 !important; color: #7D001E !important; font-weight: 800 !important; font-size: 1.1rem !important; border: none !important; border-radius: 10px !important; padding: 14px 10px !important; box-shadow: 0 6px 18px rgba(0,0,0,0.25) !important; }
+        .st-key-cta_landing_mobile .stButton > button p { color: #7D001E !important; font-weight: 800 !important; }
         .st-key-header_bar_landing { padding: 6px 10px !important; }
         .st-key-header_bar_landing div[data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; align-items: center !important; }
         .st-key-header_bar_landing div[data-testid="stColumn"] { min-width: 0 !important; width: auto !important; flex: 1 1 auto !important; }
         .st-key-header_bar_landing img { max-width: 150px !important; height: auto !important; }
         .st-key-header_bar_landing .stButton > button { padding: 6px 14px !important; font-size: 0.85rem !important; }
-        .main .block-container, div[data-testid="stMainBlockContainer"] { padding-left: 0.8rem !important; padding-right: 0.8rem !important; }
+        .main .block-container, div[data-testid="stMainBlockContainer"] { padding-left: 0 !important; padding-right: 0 !important; }
     }
     </style>
     """
@@ -1633,6 +1641,14 @@ if not st.session_state.autenticato:
             if st.button("Accedi 🔑", key="btn_main_accedi"):
                 st.session_state.open_login = True
                 st.rerun()
+
+    # Solo su smartphone: banner intero sotto la barra (non piu' come sfondo) e pulsante grande
+    st.markdown('<img class="banner-landing-mobile" src="https://i.ibb.co/zTR3Yqwb/Gemini-Generated-Image-tpzaywtpzaywtpza.png" alt="Leonardo Scuole">', unsafe_allow_html=True)
+    with st.container(key="cta_landing_mobile"):
+        st.markdown('<p class="cta-testo">Sei già iscritto? Entra nella tua area di studio.</p>', unsafe_allow_html=True)
+        if st.button("🔑 Accedi all'Area Riservata", key="btn_cta_mobile"):
+            st.session_state.open_login = True
+            st.rerun()
 
 else:
     LARGHEZZA_MENU = 280  # px
