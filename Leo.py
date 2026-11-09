@@ -1618,7 +1618,7 @@ if not st.session_state.autenticato:
     /* il componente invisibile del "Ricordami" non deve occupare spazio */
     div[class*="st-key-ricordami"] { height: 0 !important; min-height: 0 !important; overflow: hidden !important; margin: 0 !important; padding: 0 !important; }
     div[class*="st-key-ricordami"] iframe { height: 0 !important; }
-    @media (max-width: 768px) {
+    @media (max-width: 1024px) {
         .stApp { background-image: none !important; background-color: #C8102E !important; }
         .banner-landing-mobile { display: block !important; width: 100% !important; height: auto !important; margin: 0 !important; }
         .st-key-cta_landing_mobile { display: block !important; padding: 22px 18px 30px 18px !important; text-align: center !important; }
