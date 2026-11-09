@@ -1,0 +1,47 @@
+# Tiene sveglia l'app Leonardo Scuole su Streamlit Community Cloud.
+# Streamlit mette in pausa le app senza visite per 12 ore: questo controllo la visita
+# ogni 6 ore e, se la trova in pausa, preme il pulsante per riaccenderla.
+# Si puo' lanciare anche a mano: GitHub -> Actions -> "Sveglia app Streamlit" -> Run workflow.
+name: Sveglia app Streamlit
+
+on:
+  schedule:
+    - cron: "17 5,11,17,23 * * *"   # ore UTC: circa 6:17, 12:17, 18:17, 0:17 in Italia (+1h con l'ora legale)
+  workflow_dispatch:
+
+jobs:
+  sveglia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Installa il browser
+        run: |
+          pip install playwright==1.48.0
+          python -m playwright install --with-deps chromium
+      - name: Visita l'app e svegliala se dorme
+        env:
+          URL_APP: https://leonardoscuole-qxnna6jyv66hebrdjuq2dv.streamlit.app/
+        run: |
+          python - <<'PY'
+          import os, re, time
+          from playwright.sync_api import sync_playwright
+          url = os.environ["URL_APP"]
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page()
+              page.goto(url, wait_until="domcontentloaded", timeout=90000)
+              time.sleep(8)
+              pulsante = page.get_by_role("button", name=re.compile("get this app back up", re.I))
+              if pulsante.count() > 0:
+                  print("L'app dormiva: la sveglio...")
+                  pulsante.first.click()
+                  time.sleep(90)
+              else:
+                  print("L'app era gia' sveglia.")
+                  time.sleep(20)
+              print("Titolo pagina:", page.title())
+              browser.close()
+          PY
